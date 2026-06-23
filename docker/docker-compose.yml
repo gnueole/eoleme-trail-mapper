@@ -1,0 +1,20 @@
+name: eole-me-trail-mapper-dev
+
+services:
+  trail-mapper:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: eole-me-trail-mapper-dev
+    ports:
+      - "3040:3000"
+    volumes:
+      - ../public:/usr/share/nginx/html/trail-mapper
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - eole_shared_network
+
+networks:
+  eole_shared_network:
+    name: ${DOCKER_NETWORK_NAME:-eole_shared_network}
+    external: ${DOCKER_NETWORK_EXTERNAL:-false}

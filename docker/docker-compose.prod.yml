@@ -1,0 +1,23 @@
+name: eole-me-trail-mapper
+
+services:
+  trail-mapper:
+    image: ghcr.io/gnueole/eole-me-trail-mapper:latest
+    container_name: eole-me-trail-mapper-prod-container
+    restart: unless-stopped
+    networks:
+      - eole_shared_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.eoleme-trail-mapper.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/trail-mapper`)"
+      - "traefik.http.routers.eoleme-trail-mapper.entrypoints=websecure"
+      - "traefik.http.routers.eoleme-trail-mapper.tls=true"
+      - "traefik.http.routers.eoleme-trail-mapper.tls.certresolver=letsencrypt"
+      - "traefik.http.services.eoleme-trail-mapper.loadbalancer.server.port=3000"
+      - "vector.dev/collect=true"
+      - "vector.dev/dataset=eole-me-trail-mapper"
+
+networks:
+  eole_shared_network:
+    name: ${DOCKER_NETWORK_NAME}
+    external: ${DOCKER_NETWORK_EXTERNAL}

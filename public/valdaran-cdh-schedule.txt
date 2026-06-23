@@ -1,0 +1,172 @@
+Point
+Altitude (M)
+Dist (km)
+Dist. inter (km)
+Elevation gain (M)
+Elevation loss (M)
+Fastest
+Slowest
+Cut Off
+Services
+LES
+637
+0
+0
+0
+0
+Fri 06:00 AM
+Fri 06:30 AM
+
+CANEJAN
+891
+5.7
+5.7
+458
+204
+Fri 06:29 AM
+Fri 07:38 AM
+ +2
+REF. ERA HONERIA
+1017
+12.9
+7.1
+932
+554
+Fri 07:05 AM
+Fri 09:00 AM
+Fri 09:30 AM
+ +4
+Mines de Liat
+2322
+22.8
+9.9
+2360
+675
+Fri 08:26 AM
+Fri 12:09 PM
+
+CÒTH DE VARRADÒS
+2057
+28.9
+6
+2494
+1075
+Fri 08:54 AM
+Fri 01:20 PM
+Fri 02:45 PM
+ +2
+Pòrt d'Urets
+2520
+37.4
+8.4
+3191
+1308
+Fri 09:54 AM
+Fri 03:29 PM
+
+MONTGARRI
+1659
+46.8
+9.3
+3324
+2301
+Fri 10:49 AM
+Fri 05:26 PM
+Fri 06:00 PM
+ +3
+BERET
+1850
+51.9
+5
+3541
+2328
+Fri 11:18 AM
+Fri 06:35 PM
+Fri 07:00 PM
+ +4
+SALARDU
+1260
+60.8
+8.8
+3620
+2997
+Fri 12:05 PM
+Fri 08:27 PM
+Fri 08:30 PM
+ +6
+BANHS DE TREDÒS
+1759
+69.7
+8.8
+4176
+3054
+Fri 01:03 PM
+Fri 10:48 PM
+Fri 10:30 PM
+ +4
+Estanh Obago
+2239
+76.4
+6.6
+4686
+3084
+Fri 01:51 PM
+Sat 12:45 AM
+
+COLOMERS
+1980
+81.2
+4.8
+4866
+3523
+Fri 02:22 PM
+Sat 02:04 AM
+Sat 02:00 AM
+ +3
+MONT-ROMIES
+1765
+91.6
+10.3
+5221
+4093
+Fri 03:26 PM
+Sat 04:38 AM
+
+ARTIES
+1139
+96
+4.4
+5237
+4736
+Fri 03:53 PM
+Sat 05:43 AM
+Sat 05:30 AM
+ +6
+STET ESCUNHAU
+1780
+101.9
+5.8
+5922
+4780
+Fri 04:48 PM
+Sat 07:49 AM
+ +2
+Tuc de Meddia
+2209
+103.8
+1.8
+6351
+4780
+Fri 05:17 PM
+Sat 08:54 AM
+
+VIELHA
+978
+110.4
+6.6
+6368
+6027
+Fri 06:00 PM
+Sat 10:30 AM
+Sat 10:30 AM
+ +5

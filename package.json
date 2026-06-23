@@ -1,0 +1,10 @@
+{
+  "name": "eoleme-trail-mapper",
+  "version": "1.0.0",
+  "description": "UTMB Trail Mapper & Garmin GPX POI Merger",
+  "scripts": {
+    "dev": "echo 'Static files served via Docker. Port: 3040'"
+  },
+  "author": "Julien (Éole) Avarre",
+  "license": "MIT"
+}
