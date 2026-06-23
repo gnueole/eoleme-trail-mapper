@@ -2,14 +2,14 @@ name: eole-me-trail-mapper
 
 services:
   trail-mapper:
-    image: ghcr.io/gnueole/eole-me-trail-mapper:latest
+    image: ghcr.io/gnueole/eoleme-trail-mapper:latest
     container_name: eole-me-trail-mapper-prod-container
     restart: unless-stopped
     networks:
       - eole_shared_network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.eoleme-trail-mapper.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/trail-mapper`)"
+      - "traefik.http.routers.eoleme-trail-mapper.rule=(Host(`eole.me`) || Host(`www.eole.me`)) && PathPrefix(`/trail-mapper`)"
       - "traefik.http.routers.eoleme-trail-mapper.entrypoints=websecure"
       - "traefik.http.routers.eoleme-trail-mapper.tls=true"
       - "traefik.http.routers.eoleme-trail-mapper.tls.certresolver=letsencrypt"

@@ -90,22 +90,26 @@ deploy:
 	@make --no-print-directory _deploy SERVICES="$(DOCKER_SERVICES)"
 
 _deploy:
-	@echo "🚀 Building Trail Mapper image locally..."
-	docker build -t ghcr.io/gnueole/eole-me-trail-mapper:latest -f docker/Dockerfile .
-	@echo "📤 Uploading Trail Mapper image to VPS '$(VPS_SSH)'..."
-	docker save ghcr.io/gnueole/eole-me-trail-mapper:latest | ssh $(VPS_SSH) "docker load"
 	@echo "🚀 Deploying $(PROJECT_NAME) stack [$(VERSION)/$(VPS_PROJECT_TAG)] to VPS '$(VPS_SSH)' on '$(VPS_PATH)'..."
 	ssh $(VPS_SSH) "mkdir -p $(VPS_PATH)"
 	scp $(COMPOSE_PROD) $(VPS_SSH):$(VPS_PATH)/docker-compose.prod.yml
 	@if $(DOPPLER) --version >/dev/null 2>&1; then \
-		echo "🔑 Envoi des secrets de production Doppler vers le VPS..."; \
-		$(DOPPLER) secrets download --project $(DOPPLER_PROJECT) --config $(DOPPLER_CONFIG_PROD) --no-file --format env > .env.prod.temp; \
-		scp .env.prod.temp $(VPS_SSH):$(VPS_PATH)/.env; \
-		rm -f .env.prod.temp; \
+		echo "🔑 Sending Doppler production secrets to VPS..."; \
+		if $(DOPPLER) secrets download --project $(DOPPLER_PROJECT) --config $(DOPPLER_CONFIG_PROD) --no-file --format env > .env.prod.temp; then \
+			scp .env.prod.temp $(VPS_SSH):$(VPS_PATH)/.env; \
+			rm -f .env.prod.temp; \
+		else \
+			echo "❌ Error: Doppler secrets download failed!"; \
+			rm -f .env.prod.temp; \
+			exit 1; \
+		fi; \
 	else \
 		echo "❌ Error: Doppler CLI is not installed or not found in PATH!"; \
 		exit 1; \
 	fi
+	@echo "📥 Pulling latest image from GHCR..."
+	ssh $(VPS_SSH) "cd $(VPS_PATH) && docker compose -f docker-compose.prod.yml pull"
+	@echo "🔄 Recreating and starting containers (handling potential container name conflicts)..."
 	@ssh $(VPS_SSH) "docker rm -f eole-me-trail-mapper-prod-container 2>/dev/null || true"
 	ssh $(VPS_SSH) "cd $(VPS_PATH) && docker compose -f docker-compose.prod.yml up -d --remove-orphans"
 	@echo "✅ Deployment of $(PROJECT_NAME) [$(VERSION) / $(VPS_PROJECT_TAG)] successfully completed on production server!"
