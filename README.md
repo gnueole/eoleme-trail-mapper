@@ -25,8 +25,8 @@ This ensures your Garmin Fenix, Forerunner, or Enduro device displays exact dist
 * **🗂️ Standardized Garmin Icons**:
   * Map checkpoints to native Garmin waypoint types (Aid Station, Water, First Aid, Summit, etc.) for clean on-device symbol rendering.
 * **⚡ Production Grade Architecture**:
-  * Lightweight static application with zero runtime backend dependency.
-  * Served via Dockerized Nginx, pre-configured with gzip compression and caching headers.
+  * FastAPI backend serving the Leaflet map frontend and secure in-memory GPX/TCX merging.
+  * Containerized using Python, optimized for zero-disk operations and SSRF safe external downloads.
 
 ---
 
@@ -35,19 +35,38 @@ This ensures your Garmin Fenix, Forerunner, or Enduro device displays exact dist
 ```text
 trail-mapper/
 ├── docker/
-│   ├── Dockerfile                  # Production Nginx image configuration
-│   ├── nginx.conf                  # Nginx caching, compression & subpath routing
-│   ├── docker-compose.yml          # Local development compose configuration
-│   └── docker-compose.prod.yml     # Production VPS compose with Traefik labels
-├── public/
-│   ├── index.html                  # Main UI structure (Outfit & Plus Jakarta typography)
-│   ├── styles.css                  # Premium dark-mode layout and styling
-│   ├── app.js                      # Core parser, GPX generator, and Leaflet controller
-│   ├── valdaran-cdh.gpx            # Val d'Aran CDH demo track
-│   └── valdaran-cdh-schedule.txt   # Val d'Aran CDH schedule demo data
-├── Makefile                        # Development automation & VPS deployment script
-├── package.json                    # Project metadata & standard scripts
+│   ├── Dockerfile                  # Production FastAPI container build
+│   ├── docker-compose.yml          # Local dev compose (hot-reloads code)
+│   └── docker-compose.prod.yml     # Production compose behind Traefik
+├── public/                         # Web frontend (Leaflet maps, elevation profile)
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+├── garmin_course_injector.py       # Core waypoint calibration engine + CLI utility
+├── server.py                       # FastAPI backend server
+├── requirements.txt                # Python backend package dependencies
+├── Makefile                        # Dev env controls & VPS deployment commands
+├── package.json                    # Project metadata & scripts
 └── README.md                       # Documentation (this file)
+```
+
+---
+
+## ⌚ CLI Usage (For Power Users)
+
+For terminal speed and local scripting, you can run the core engine directly as a CLI tool without starting the web server.
+
+```bash
+# General help
+python garmin_course_injector.py --help
+
+# Run with defaults
+python garmin_course_injector.py -i public/valdaran-cdh.gpx -d 110.4
+
+# Download GPX and Google Sheets CSV directly
+python garmin_course_injector.py \
+  --input-url "https://example.com/route.gpx" \
+  --stations-url "https://docs.google.com/spreadsheets/d/e/2PACX-.../pub?output=csv"
 ```
 
 ---

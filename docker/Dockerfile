@@ -1,11 +1,18 @@
-FROM nginx:alpine
+FROM python:3.11-slim-buster
 
-# Copy custom nginx configuration
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+WORKDIR /app
 
-# Copy public static files to Nginx server subpath directory
-COPY public /usr/share/nginx/html/trail-mapper
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy backend files and static assets
+COPY garmin_course_injector.py .
+COPY server.py .
+COPY public ./public
+
+# Expose the configured Traefik port
 EXPOSE 3000
 
-CMD ["nginx", "-g", "daemon off;"]
+# Start FastAPI server on port 3000
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "3000"]

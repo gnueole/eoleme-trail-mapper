@@ -157,10 +157,18 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="card-footer">
-                    <button type="button" id="btn-merge-download" class="btn btn-primary btn-block btn-lg" disabled>
+                <div class="card-footer" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button type="button" id="btn-merge-download" class="btn btn-primary btn-lg" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.5rem;" disabled>
                         <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                        <span>Merge & Export Garmin GPX</span>
+                        <span>Garmin GPX</span>
+                    </button>
+                    <button type="button" id="btn-merge-download-tcx" class="btn btn-primary btn-lg" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.5rem; background: linear-gradient(135deg, #0ea5e9, #3b82f6);" disabled>
+                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                        <span>Garmin TCX</span>
+                    </button>
+                    <button type="button" id="btn-merge-download-suunto" class="btn btn-secondary btn-lg" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;" disabled>
+                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                        <span>Suunto GPX</span>
                     </button>
                 </div>
             </div>

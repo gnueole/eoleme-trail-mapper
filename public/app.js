@@ -31,6 +31,8 @@ const poiTableBody = document.getElementById('poi-table-body');
 const poiCountSpan = document.getElementById('poi-count');
 const btnAddPoi = document.getElementById('btn-add-poi');
 const btnMergeDownload = document.getElementById('btn-merge-download');
+const btnMergeDownloadTcx = document.getElementById('btn-merge-download-tcx');
+const btnMergeDownloadSuunto = document.getElementById('btn-merge-download-suunto');
 
 // Stats Elements
 const statRaceName = document.getElementById('stat-race-name');
@@ -123,6 +125,9 @@ gpxFileInput.addEventListener('change', (e) => {
 function handleGPXFile(file) {
     state.gpxFileName = file.name;
     gpxFileNameDisplay.textContent = file.name;
+    
+    // Save file object for uploading
+    state.gpxFileObject = file;
     
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -507,11 +512,15 @@ btnAddPoi.addEventListener('click', () => {
     checkMergeAbility();
 });
 
-// Enable/Disable download button
+// Enable/Disable download buttons
 function checkMergeAbility() {
     const hasGPX = state.gpxTrackPoints.length > 0;
     const hasActiveStops = state.checkpoints.some(c => c.use);
-    btnMergeDownload.disabled = !(hasGPX && hasActiveStops);
+    const disabled = !(hasGPX && hasActiveStops);
+    
+    btnMergeDownload.disabled = disabled;
+    if (btnMergeDownloadTcx) btnMergeDownloadTcx.disabled = disabled;
+    if (btnMergeDownloadSuunto) btnMergeDownloadSuunto.disabled = disabled;
 }
 
 // Hook Settings Redraws
@@ -924,7 +933,7 @@ btnParseHtml.addEventListener('click', () => {
     }
 });
 
-// Fetch UTMB Race Data via CORS proxy
+// Fetch UTMB Race Data via backend proxy
 btnFetch.addEventListener('click', async () => {
     const url = raceUrlInput.value.trim();
     if (!url) {
@@ -933,69 +942,55 @@ btnFetch.addEventListener('click', async () => {
     }
     
     fetchLoader.classList.add('active');
-    fetchStatusText.textContent = 'Requesting page content...';
+    fetchStatusText.textContent = 'Requesting page content via server...';
     
     try {
-        // Fetch HTML through allorigins CORS bypass service
-        const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error('Network response from proxy was not ok');
+        const response = await fetch('/trail-mapper/api/parse-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: url })
+        });
+        
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.detail || 'Failed to parse URL on server');
+        }
         
         const data = await response.json();
-        const html = data.contents;
-        
-        fetchStatusText.textContent = 'Parsing aid stations from page...';
-        
-        // Step 1: Attempt to parse aid stations from tables inside the page
-        let scrapedStations = parseUTMBTableHTML(html);
-        
-        if (scrapedStations.length === 0) {
-            // Fallback: Try parsing the text content of the page body
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const pageText = doc.body.innerText || doc.body.textContent || '';
-            scrapedStations = parseUTMBCopyPastedText(pageText);
-        }
-        
-        fetchStatusText.textContent = 'Searching for GPX tracks...';
-        
-        // Step 2: Try to locate any GPX file link in the HTML
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const links = doc.querySelectorAll('a');
-        let gpxUrl = null;
-        
-        for (let a of links) {
-            const href = a.getAttribute('href') || '';
-            if (href.endsWith('.gpx') || href.includes('/gpx/') || href.includes('format=gpx')) {
-                gpxUrl = href;
-                break;
-            }
-        }
-        
-        // Resolve relative URL
-        if (gpxUrl && !gpxUrl.startsWith('http')) {
-            const baseUrl = new URL(url);
-            gpxUrl = new URL(gpxUrl, baseUrl.origin).toString();
-        }
+        const scrapedStations = data.stations || [];
+        const gpxUrl = data.gpx_link;
         
         if (scrapedStations.length > 0) {
-            // Sort checkpoints by distance
-            scrapedStations.sort((a, b) => a.dist - b.dist);
-            state.checkpoints = scrapedStations;
+            state.checkpoints = scrapedStations.map((s, idx) => ({
+                id: s.id || ('scraped_' + idx + '_' + Date.now()),
+                name: s.name,
+                dist: s.dist,
+                ele: s.ele || 0,
+                icon: s.icon,
+                use: s.use !== undefined ? s.use : true
+            }));
             renderPOITable();
         }
         
         if (gpxUrl) {
-            fetchStatusText.textContent = 'Downloading GPX track...';
-            const gpxProxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(gpxUrl);
-            const gpxResponse = await fetch(gpxProxyUrl);
-            const gpxData = await gpxResponse.json();
+            fetchStatusText.textContent = 'Downloading GPX track via server...';
+            const gpxResponse = await fetch('/trail-mapper/api/download-gpx', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: gpxUrl })
+            });
             
-            parseGPX(gpxData.contents);
+            if (!gpxResponse.ok) {
+                const errData = await gpxResponse.json();
+                throw new Error(errData.detail || 'Failed to download GPX via server');
+            }
+            
+            const gpxText = await gpxResponse.text();
+            parseGPX(gpxText);
+            
             alert(`Successfully fetched GPX track and ${scrapedStations.length} aid stations!`);
         } else {
-            alert(`Parsed ${scrapedStations.length} aid stations, but could not find a direct GPX link in the page. Please upload the GPX file manually in the 'Upload Files' tab.`);
+            alert(`Parsed ${scrapedStations.length} aid stations, but could not find a GPX link in the page. Please upload the GPX file manually.`);
             switchTab('upload-tab');
         }
         
@@ -1008,74 +1003,111 @@ btnFetch.addEventListener('click', async () => {
     }
 });
 
-// GPX XML Merger and Download Exporter
-btnMergeDownload.addEventListener('click', () => {
+// Generic merge and export trigger
+async function triggerMergeDownload(format) {
     if (state.gpxTrackPoints.length === 0 || !state.originalGPXXml) {
         alert('No GPX route loaded.');
         return;
     }
     
-    const xmlDoc = state.originalGPXXml.cloneNode(true);
+    // Prepare GPX blob
+    let gpxBlob;
+    if (state.gpxFileObject) {
+        gpxBlob = state.gpxFileObject;
+    } else {
+        const serializer = new XMLSerializer();
+        const gpxString = serializer.serializeToString(state.originalGPXXml);
+        gpxBlob = new Blob([gpxString], { type: 'application/gpx+xml' });
+    }
     
-    // Clear existing waypoints if any, to avoid duplicates
-    const existingWpts = xmlDoc.querySelectorAll('wpt');
-    existingWpts.forEach(w => w.remove());
+    // Map icons to backend expected symbols
+    const mappedStations = state.checkpoints.map(c => ({
+        name: c.name,
+        dist: c.dist,
+        icon: c.icon,
+        use: c.use
+    }));
     
-    // Create new waypoint (<wpt>) tags inside GPX for each snapped active checkpoint
-    const gpxNode = xmlDoc.querySelector('gpx');
-    const trkNode = xmlDoc.querySelector('trk');
+    const formData = new FormData();
+    formData.append('gpx_file', gpxBlob, state.gpxFileName || 'route.gpx');
+    formData.append('stations_json', JSON.stringify(mappedStations));
     
-    state.checkpoints.forEach(poi => {
-        if (!poi.use || poi.lat === undefined || poi.lon === undefined) return;
+    // Check settings
+    const noScale = document.getElementById('no-scale')?.checked || false;
+    formData.append('no-scale', noScale);
+    
+    // Total distance limit/setting
+    formData.append('official_dist', state.totalDistance);
+    
+    try {
+        btnMergeDownload.disabled = true;
+        if (btnMergeDownloadTcx) btnMergeDownloadTcx.disabled = true;
+        if (btnMergeDownloadSuunto) btnMergeDownloadSuunto.disabled = true;
         
-        const wpt = xmlDoc.createElement('wpt');
-        wpt.setAttribute('lat', poi.lat.toFixed(6));
-        wpt.setAttribute('lon', poi.lon.toFixed(6));
+        const response = await fetch('/trail-mapper/api/merge', {
+            method: 'POST',
+            body: formData
+        });
         
-        const ele = xmlDoc.createElement('ele');
-        ele.textContent = poi.ele || 0;
-        wpt.appendChild(ele);
-        
-        const name = xmlDoc.createElement('name');
-        // Format names to fit Garmin hardware limitations
-        name.textContent = generateGarminName(poi.name, poi.ele);
-        wpt.appendChild(name);
-        
-        const sym = xmlDoc.createElement('sym');
-        sym.textContent = poi.icon;
-        wpt.appendChild(sym);
-        
-        // Append before the <trk> tag to follow standard GPX schema validation rules
-        if (trkNode) {
-            gpxNode.insertBefore(wpt, trkNode);
-        } else {
-            gpxNode.appendChild(wpt);
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.detail || 'Merge failed on server');
         }
-    });
-    
-    // Serialize back to XML string
-    const serializer = new XMLSerializer();
-    let mergedGpxString = serializer.serializeToString(xmlDoc);
-    
-    // Pretty print XML (optional regex fixes)
-    mergedGpxString = mergedGpxString.replace(/><wpt/g, '>\n  <wpt');
-    mergedGpxString = mergedGpxString.replace(/><trk/g, '>\n  <trk');
-    
-    // Trigger client-side file download
-    const blob = new Blob([mergedGpxString], { type: 'application/gpx+xml;charset=utf-8' });
-    const downloadUrl = URL.createObjectURL(blob);
-    const downloadLink = document.createElement('a');
-    
-    // Format download file name
-    const baseName = state.gpxFileName.replace(/\.gpx$/i, '');
-    downloadLink.href = downloadUrl;
-    downloadLink.download = `${baseName}_garmin_pois.gpx`;
-    
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    URL.revokeObjectURL(downloadUrl);
-});
+        
+        const data = await response.json();
+        
+        let downloadString = "";
+        let fileNameSuffix = "";
+        let contentType = "";
+        
+        if (format === 'garmin_gpx') {
+            downloadString = data.garmin_gpx;
+            fileNameSuffix = "_garmin.gpx";
+            contentType = "application/gpx+xml";
+        } else if (format === 'garmin_tcx') {
+            downloadString = data.garmin_tcx;
+            fileNameSuffix = "_garmin.tcx";
+            contentType = "application/xml";
+        } else if (format === 'suunto_gpx') {
+            downloadString = data.suunto_gpx;
+            fileNameSuffix = "_suunto.gpx";
+            contentType = "application/gpx+xml";
+        }
+        
+        if (!downloadString) {
+            alert("No data generated for " + format);
+            return;
+        }
+        
+        const blob = new Blob([downloadString], { type: contentType + ';charset=utf-8' });
+        const downloadUrl = URL.createObjectURL(blob);
+        const downloadLink = document.createElement('a');
+        
+        const baseName = state.gpxFileName.replace(/\.gpx$/i, '');
+        downloadLink.href = downloadUrl;
+        downloadLink.download = `${baseName}${fileNameSuffix}`;
+        
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(downloadUrl);
+        
+    } catch (err) {
+        console.error(err);
+        alert('Merge error: ' + err.message);
+    } finally {
+        checkMergeAbility();
+    }
+}
+
+// Bind merge download listeners
+btnMergeDownload.addEventListener('click', () => triggerMergeDownload('garmin_gpx'));
+if (btnMergeDownloadTcx) {
+    btnMergeDownloadTcx.addEventListener('click', () => triggerMergeDownload('garmin_tcx'));
+}
+if (btnMergeDownloadSuunto) {
+    btnMergeDownloadSuunto.addEventListener('click', () => triggerMergeDownload('suunto_gpx'));
+}
 
 // Mock TDS Race Data for Startup Demo
 const DEFAULT_RACE_NODES = [
