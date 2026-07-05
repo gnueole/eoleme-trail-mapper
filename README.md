@@ -3,9 +3,19 @@
 [![CI Status](https://github.com/gnueole/eoleme-trail-mapper/actions/workflows/ci.yml/badge.svg)](https://github.com/gnueole/eoleme-trail-mapper/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+**Live Production Link**: [https://eole.me/trail-mapper/](https://eole.me/trail-mapper/)
+
+Author: [Eole](https://eole.me) <[EMAIL_ADDRESS]>
+
+Reach the finish line of your ultra with a map that guides you to every checkpoint.
+
+![Garmin Course Points on Watch Screen](public/garmin-screenshot.png)
+![Trail Mapper Web Interface](public/trail-mapper-webui.png)
+
 A high-performance, responsive frontend utility designed for ultra-trail runners. It parses UTMB race tables (either fetched from UTMB URLs or pasted as raw text/HTML), visualizes GPX routes on an interactive Leaflet map, displays a custom-rendered elevation profile, and merges checkpoints/aid stations directly into the GPX track as Garmin-compliant **Course Points** (`<coursepoint>`).
 
 This ensures your Garmin Fenix, Forerunner, or Enduro device displays exact distances, elevation data, and customized icons (like food/water/medical stations) directly inside your navigation screens.
+
 
 ---
 
@@ -38,17 +48,26 @@ trail-mapper/
 │   ├── Dockerfile                  # Production FastAPI container build
 │   ├── docker-compose.yml          # Local dev compose (hot-reloads code)
 │   └── docker-compose.prod.yml     # Production compose behind Traefik
-├── public/                         # Web frontend (Leaflet maps, elevation profile)
-│   ├── index.html
-│   ├── styles.css
-│   └── app.js
+├── public/                         # Web frontend (Leaflet maps, ES Modules)
+│   ├── index.html                  # HTML5 markup structure
+│   ├── styles.css                  # Premium dark/light styles
+│   ├── app.js                      # Core JS orchestrator
+│   ├── state.js                    # Global reactive state & persistence
+│   ├── translations.js             # EN/FR text & symbol translations
+│   ├── map-utils.js                # Leaflet map styling & snapping logic
+│   ├── elevation-chart.js          # Canvas altimetric profile
+│   └── utils.js                    # Garmin name cleanups & formatting
 ├── garmin_course_injector.py       # Core waypoint calibration engine + CLI utility
 ├── server.py                       # FastAPI backend server
 ├── requirements.txt                # Python backend package dependencies
 ├── Makefile                        # Dev env controls & VPS deployment commands
 ├── package.json                    # Project metadata & scripts
+├── architecture.md                 # Design & component layout (see link below)
+├── TODO.md                         # Active development roadmap (see link below)
 └── README.md                       # Documentation (this file)
 ```
+
+For more detailed technical components, check out the **[Architecture Overview](architecture.md)** and the **[Development Roadmap & TODOs](TODO.md)**.
 
 ---
 

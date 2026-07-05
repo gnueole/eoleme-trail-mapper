@@ -12,7 +12,19 @@ from pydantic import BaseModel, HttpUrl
 import defusedxml.ElementTree as DET
 from garmin_course_injector import process_gpx_and_stations_data
 
-app = FastAPI(title="Trail Mapper & GPX POI Injector Backend")
+def get_version() -> str:
+    try:
+        version_path = os.path.join(os.path.dirname(__file__), "public", "version.js")
+        with open(version_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            m = re.search(r"VERSION\s*=\s*['\"]([^'\"]+)['\"]", content)
+            if m:
+                return m.group(1)
+    except Exception:
+        pass
+    return "1.0.0"
+
+app = FastAPI(title="Trail Mapper & GPX POI Injector Backend", version=get_version())
 
 # SSRF Guard helper
 def is_safe_url(url: str) -> bool:
@@ -40,6 +52,163 @@ def is_safe_url(url: str) -> bool:
         return True
     except Exception:
         return False
+
+def guess_waypoint_symbol(name: str) -> str:
+    name_lower = name.lower()
+    
+    # Food guessers
+    if any(k in name_lower for k in ("ravit", "food", "repas", "restau", "cade", "brunch", "manger", "snack")):
+        return "Food"
+    
+    # Water guessers
+    if any(k in name_lower for k in ("eau", "water", "sourc", "fontaine", "peyreleau", "drink", "hydra")):
+        return "Water Source"
+        
+    # Summit guessers
+    if any(k in name_lower for k in ("sommet", "peak", "col", "mont", "aiguille", "tête", "tete", "crête", "crete", "dôme", "dome", "pouncho", "nez", "crest", "hill", "pass")):
+        return "Summit"
+        
+    # Medical guessers
+    if any(k in name_lower for k in ("secour", "medical", "aid", "croix", "red cross", "infirmerie", "doctor", "clinique")):
+        return "Medical Facility"
+        
+    # Shelter guessers
+    if any(k in name_lower for k in ("refuge", "chalet", "gîte", "gite", "shelter", "cabane", "auberge", "hut", "cabin")):
+        return "Shelter"
+        
+    # Campsite guessers
+    if any(k in name_lower for k in ("camp", "campsite", "camping", "bivouac")):
+        return "Campsite"
+        
+    # Rest area / Restroom guessers
+    if any(k in name_lower for k in ("toilet", "wc", "sanit", "restroom", "douche", "shower")):
+        return "Toilet"
+        
+    # Danger guessers
+    if any(k in name_lower for k in ("danger", "warning", "diffic", "risk", "attention", "caillou")):
+        return "Danger"
+        
+    # Default fallback is Checkpoint instead of Residence (Generic Point)
+    return "Checkpoint"
+
+def parse_utmb_next_data(html: str) -> dict:
+    """
+    Parses the __NEXT_DATA__ script block from a UTMB Next.js page.
+    Returns a dict with 'stations', 'gpx_link', and 'metadata' if successful, or None.
+    """
+    try:
+        # Search for the script block
+        match = re.search(r'<script\s+id="__NEXT_DATA__"\s+type="application/json">(.*?)</script>', html, re.S)
+        if not match:
+            return None
+        
+        data = json.loads(match.group(1))
+        page_props = data.get("props", {}).get("pageProps", {})
+        
+        gpx_link = page_props.get("gpxUrl")
+        track = page_props.get("track", {})
+        points = track.get("points", [])
+        
+        if not points and not gpx_link:
+            return None
+            
+        # Parse page metadata
+        page_header = page_props.get("pageHeader", {})
+        banner_stats = page_props.get("bannerStats", [])
+        main_stats = page_props.get("mainStats", [])
+        
+        category = None
+        running_stones = None
+        direct_entry = None
+        for ms in main_stats:
+            if ms.get("name") == "categoryWorldSeries":
+                category = ms.get("value")
+            elif ms.get("name") == "runningStones":
+                running_stones = ms.get("value")
+            elif ms.get("name") == "directEntry":
+                direct_entry = ms.get("value")
+                
+        logo_url = None
+        race_logo = page_props.get("raceLogo", {})
+        if race_logo:
+            logo_img = race_logo.get("light") or race_logo.get("dark")
+            if logo_img:
+                pub_id = logo_img.get("publicId")
+                fmt = logo_img.get("format", "png")
+                if pub_id:
+                    from urllib.parse import quote
+                    logo_url = f"https://res.cloudinary.com/utmb-world/image/upload/f_auto,q_auto/{quote(pub_id)}.{fmt}"
+        
+        metadata = {
+            "course_name": page_header.get("title") or "Custom Trail Race",
+            "distance": None,
+            "elevation": None,
+            "start_location": None,
+            "start_date": page_header.get("startDate"),
+            "category": category,
+            "running_stones": running_stones,
+            "direct_entry": direct_entry,
+            "logo_url": logo_url
+        }
+        
+        for stat in banner_stats:
+            name = stat.get("name")
+            val = stat.get("value")
+            postfix = stat.get("postfix") or ""
+            if name == "distance":
+                metadata["distance"] = f"{val} {postfix}".strip()
+            elif name == "elevationGain":
+                metadata["elevation"] = f"{val} {postfix} D+".strip()
+            elif name == "startDate":
+                metadata["start_date"] = val
+            elif name == "startPlaceAndTime":
+                metadata["start_location"] = val
+                
+        if not metadata["distance"] and track.get("distance"):
+            metadata["distance"] = f"{track.get('distance') / 1000.0:.1f} km"
+        if not metadata["elevation"] and track.get("gainElevation"):
+            metadata["elevation"] = f"{track.get('gainElevation')} m D+"
+            
+        stations = []
+        for idx, pt in enumerate(points):
+            name = pt.get("name", f"Station {idx}")
+            dist_m = pt.get("distance", 0.0)
+            dist_val = dist_m / 1000.0  # Convert to km
+            ele_val = pt.get("elevation", 0)
+            
+            # Map Garmin icon
+            supplies = pt.get("supplies", "none")
+            has_medical = pt.get("hasMedical", False)
+            
+            if has_medical:
+                sym = "Medical Facility"
+            elif supplies in ("food", "complete"):
+                sym = "Food"
+            elif supplies == "drink":
+                sym = "Water Source"
+            else:
+                sym = guess_waypoint_symbol(name)
+            
+            stations.append({
+                "id": f"scraped_{idx}",
+                "name": name[:30],
+                "dist": dist_val,
+                "ele": ele_val,
+                "icon": sym,
+                "use": True,
+                "lat": pt.get("lat"),
+                "lon": pt.get("lon"),
+                "time": pt.get("cutoff") or pt.get("slowest") or ""
+            })
+            
+        return {
+            "stations": stations,
+            "gpx_link": gpx_link,
+            "metadata": metadata
+        }
+    except Exception as e:
+        print(f"Error parsing Next.js __NEXT_DATA__: {e}")
+        return None
 
 # Pydantic models for request bodies
 class DownloadGpxRequest(BaseModel):
@@ -127,7 +296,12 @@ def parse_url(payload: ParseUrlRequest):
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         )
         with urllib.request.urlopen(req, timeout=5) as response:
-            html = response.read().decode('utf-8', errors='ignore')
+            html = response.read().decode('utf-8', errors='replace')
+            
+        # Try to parse as Next.js __NEXT_DATA__
+        next_data_parsed = parse_utmb_next_data(html)
+        if next_data_parsed:
+            return JSONResponse(content=next_data_parsed)
             
         # Try to locate any GPX URL in the page to help the user
         gpx_link = None
@@ -138,6 +312,25 @@ def parse_url(payload: ParseUrlRequest):
                 base = urlparse(url)
                 gpx_link = f"{base.scheme}://{base.netloc}{gpx_link}"
         
+        # Extract table rows
+        # Very simple heuristic for aid station rows containing dist, name
+        stations = []
+        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.S)
+        # Initialize metadata block for non-NextJS pages
+        metadata = {
+            "course_name": "Custom Trail Race",
+            "distance": None,
+            "elevation": None,
+            "start_location": None,
+            "start_date": None
+        }
+        
+        # Try to guess course name from title
+        title_m = re.search(r'<title>(.*?)</title>', html, re.I)
+        if title_m:
+            clean_title = re.sub(r'\s+', ' ', title_m.group(1))
+            metadata["course_name"] = clean_title.split('|')[0].split('-')[0].strip()
+
         # Extract table rows
         # Very simple heuristic for aid station rows containing dist, name
         stations = []
@@ -160,16 +353,7 @@ def parse_url(payload: ParseUrlRequest):
                         name_val = txt
                 
                 if name_val and dist_val is not None:
-                    sym = "Checkpoint"
-                    name_lower = name_val.lower()
-                    if "ravit" in name_lower or "food" in name_lower:
-                        sym = "Food"
-                    elif "eau" in name_lower or "water" in name_lower:
-                        sym = "Water"
-                    elif "sommet" in name_lower or "peak" in name_lower or "col " in name_lower:
-                        sym = "Summit"
-                    elif "secour" in name_lower or "medical" in name_lower:
-                        sym = "Medical"
+                    sym = guess_waypoint_symbol(name_val)
                         
                     stations.append({
                         "id": f"scraped_{idx}",
@@ -180,9 +364,79 @@ def parse_url(payload: ParseUrlRequest):
                         "use": True
                     })
         
+        # If no stations found via tables, run text-based regex parser fallback (e.g. for Templiers wordpress page)
+        if not stations:
+            # Strip HTML tags by replacing them with space
+            text = re.sub(r'<[^>]*>', ' ', html)
+            text = text.replace('&nbsp;', ' ')
+            text = text.replace('&#8211;', '–')
+            text = text.replace('&#8217;', '’')
+            text = re.sub(r'\s+', ' ', text)
+            
+            parsed_list = []
+            
+            # Regex 1: "Name : km Dist" or "Name - km Dist"
+            pattern1 = r'([A-ZÀ-Ÿ][a-zA-ZÀ-ÿ\s\-\'\’]{2,30}?)\s*(?::|-|–|—|\s)\s*(?:km|km\s*:?\s*)\s*(\d+(?:[.,]\d+)?)\b'
+            for match in re.finditer(pattern1, text):
+                name = match.group(1).strip()
+                dist_str = match.group(2).replace(',', '.')
+                dist = float(dist_str)
+                name = re.sub(r'^[\.\-\>\s\•]+', '', name).strip()
+                if len(name) < 3 or "Départ" in name or "Distance" in name or "Dénivelé" in name:
+                    continue
+                if dist > 180:
+                    continue
+                parsed_list.append((name, dist))
+                
+            # Regex 2: "Name (km Dist)"
+            pattern2 = r'([A-ZÀ-Ÿ][a-zA-ZÀ-ÿ\s\-\'\’]{2,30}?)\s*\(\s*(?:km\s*)?(\d+(?:[.,]\d+)?)\s*\)'
+            for match in re.finditer(pattern2, text):
+                name = match.group(1).strip()
+                dist_str = match.group(2).replace(',', '.')
+                dist = float(dist_str)
+                name = re.sub(r'^[\.\-\>\s\•]+', '', name).strip()
+                if len(name) < 3 or "Départ" in name or "Distance" in name or "Dénivelé" in name:
+                    continue
+                if dist > 180:
+                    continue
+                parsed_list.append((name, dist))
+                
+            # Deduplicate and sort
+            unique_stations = {}
+            for name, dist in parsed_list:
+                name_clean = re.sub(r'\s+', ' ', name).strip()
+                found_close = False
+                for k_dist, k_name in list(unique_stations.items()):
+                    if abs(k_dist - dist) < 0.3:
+                        found_close = True
+                        if len(name_clean) > len(k_name):
+                            unique_stations[k_dist] = name_clean
+                        break
+                if not found_close:
+                    unique_stations[dist] = name_clean
+            
+            # Map to expected output structure
+            for idx, (dist, name) in enumerate(sorted(unique_stations.items())):
+                sym = guess_waypoint_symbol(name)
+                
+                stations.append({
+                    "id": f"parsed_text_{idx}",
+                    "name": name[:30],
+                    "dist": dist,
+                    "ele": 0,
+                    "icon": sym,
+                    "use": True
+                })
+        
+        # Populate distance from parsed stations if we have them
+        if stations:
+            max_parsed_dist = max(s["dist"] for s in stations)
+            metadata["distance"] = f"{max_parsed_dist:.1f} km"
+            
         return JSONResponse(content={
             "stations": stations,
-            "gpx_link": gpx_link
+            "gpx_link": gpx_link,
+            "metadata": metadata
         })
         
     except Exception as e:
@@ -193,7 +447,11 @@ async def merge_data(
     gpx_file: UploadFile = File(...),
     stations_json: str = Form(...),
     official_dist: float = Form(None),
-    no_scale: bool = Form(False)
+    no_scale: bool = Form(False),
+    shorten_names: bool = Form(False),
+    char_limit: int = Form(15),
+    add_elev: bool = Form(False),
+    start_date: str = Form(None)
 ):
     try:
         # Load and validate stations json
@@ -209,17 +467,21 @@ async def merge_data(
             raise HTTPException(status_code=400, detail=f"Invalid XML in uploaded GPX: {str(xml_err)}")
         
         # Map frontend icon terms to backend symbols expected by garmin_course_injector.py
-        # Frontend symbols: 'Food', 'Water Source', 'Summit', 'Danger', 'Medical Facility', 'Flag, Red', 'Flag, Blue', 'Residence'
-        # Backend symbols: 'Water', 'Food', 'House', 'Summit', 'Checkpoint'
         symbol_map = {
             'Food': 'Food',
             'Water Source': 'Water',
             'Summit': 'Summit',
-            'Medical Facility': 'House', # maps to First Aid / House
-            'Residence': 'House',
-            'Flag, Blue': 'Checkpoint',
-            'Flag, Red': 'Checkpoint',
-            'Danger': 'Checkpoint'
+            'Medical Facility': 'First Aid',
+            'Aid Station': 'Aid Station',
+            'Toilet': 'Toilet',
+            'Shower': 'Shower',
+            'Campsite': 'Campsite',
+            'Shelter': 'Shelter',
+            'Rest Area': 'Rest Area',
+            'Transition': 'Transition',
+            'Danger': 'Danger',
+            'Checkpoint': 'Checkpoint',
+            'Residence': 'Residence'
         }
         
         mapped_stations = []
@@ -230,7 +492,8 @@ async def merge_data(
             mapped_stations.append({
                 'name': s.get('name', 'Station'),
                 'dist': float(s.get('dist', 0.0)),
-                'symbol': symbol_map.get(icon, 'Checkpoint')
+                'symbol': symbol_map.get(icon, 'Checkpoint'),
+                'time': s.get('time', '')
             })
             
         # Run processing engine
@@ -240,7 +503,11 @@ async def merge_data(
             official_dist=official_dist,
             no_scale=no_scale,
             generate_garmin=True,
-            generate_suunto=True
+            generate_suunto=True,
+            shorten_names=shorten_names,
+            char_limit=char_limit,
+            add_elev=add_elev,
+            start_date=start_date
         )
         
         # Return generated payloads as JSON

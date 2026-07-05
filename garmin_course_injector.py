@@ -70,15 +70,64 @@ def haversine_km(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-def clean_poi_name(name, max_len=10):
+def abbreviate_name(name: str) -> str:
     """
-    Cleans a string to be Garmin-compatible (ASCII only, no special characters or accents)
-    and truncates it to prevent clipping on the watch screen (default max 10 characters).
+    Applies abbreviations to common trail running / race terminology (French and English)
+    to optimize names for Garmin watch displays.
     """
+    res = name
+    
+    # Common French contractions for trails
+    res = re.sub(r'ravitaillement', 'RAV', res, flags=re.IGNORECASE)
+    res = re.sub(r"point d'eau", 'EAU', res, flags=re.IGNORECASE)
+    res = re.sub(r'point d eau', 'EAU', res, flags=re.IGNORECASE)
+    res = re.sub(r'départ', 'DEP', res, flags=re.IGNORECASE)
+    res = re.sub(r'depart', 'DEP', res, flags=re.IGNORECASE)
+    res = re.sub(r'arrivée', 'ARR', res, flags=re.IGNORECASE)
+    res = re.sub(r'arrivee', 'ARR', res, flags=re.IGNORECASE)
+    res = re.sub(r'sommet', 'SMT', res, flags=re.IGNORECASE)
+    res = re.sub(r'refuge', 'REF', res, flags=re.IGNORECASE)
+    res = re.sub(r'col de la', 'COL', res, flags=re.IGNORECASE)
+    res = re.sub(r'col du', 'COL', res, flags=re.IGNORECASE)
+    res = re.sub(r'col de', 'COL', res, flags=re.IGNORECASE)
+    res = re.sub(r'chalet de la', 'CHAL', res, flags=re.IGNORECASE)
+    res = re.sub(r'chalet du', 'CHAL', res, flags=re.IGNORECASE)
+    res = re.sub(r'chalet de', 'CHAL', res, flags=re.IGNORECASE)
+    
+    # English replacements
+    res = re.sub(r'aid station', 'AID', res, flags=re.IGNORECASE)
+    res = re.sub(r'water point', 'WTR', res, flags=re.IGNORECASE)
+    res = re.sub(r'checkpoint', 'CP', res, flags=re.IGNORECASE)
+    res = re.sub(r'start', 'STR', res, flags=re.IGNORECASE)
+    res = re.sub(r'finish', 'FNS', res, flags=re.IGNORECASE)
+    
+    return res
+
+def clean_poi_name(name, max_len=10, shorten_names=False, add_elev=False, ele=None):
+    """
+    Cleans a string to be Garmin-compatible (ASCII only, no special characters or accents),
+    optionally abbreviates common words, optionally appends elevation, and truncates
+    to prevent clipping on the watch screen.
+    """
+    # 1. Abbreviate if requested
+    if shorten_names:
+        name = abbreviate_name(name)
+        
+    # 2. Append elevation if requested and present
+    if add_elev and ele is not None:
+        try:
+            ele_int = int(round(float(ele)))
+            name = f"{name} {ele_int}m"
+        except (ValueError, TypeError):
+            pass
+
+    # 3. Clean up to ASCII
     nfkd_form = unicodedata.normalize('NFKD', name)
     ascii_only = nfkd_form.encode('ASCII', 'ignore').decode('ASCII')
     cleaned = re.sub(r'[^a-zA-Z0-9\s\-\.]', '', ascii_only)
     cleaned = cleaned.strip()
+    
+    # 4. Truncate to maximum characters
     return cleaned[:max_len]
 
 def get_namespace(tag):
@@ -205,13 +254,73 @@ def fetch_aid_stations(url):
 # 3. CORE PROCESSING LOGIC
 # ==========================================
 
+def resolve_cutoff_time(time_str, start_dt):
+    if not time_str or not start_dt:
+        return None
+        
+    time_str_lower = time_str.strip().lower()
+    
+    # Map weekdays in French and English
+    weekdays_map = {
+        'mon': 0, 'lun': 0,
+        'tue': 1, 'mar': 1,
+        'wed': 2, 'mer': 2,
+        'thu': 3, 'jeu': 3,
+        'fri': 4, 'ven': 4,
+        'sat': 5, 'sam': 5,
+        'sun': 6, 'dim': 6
+    }
+    
+    w_cutoff = None
+    for day_name, day_val in weekdays_map.items():
+        if day_name in time_str_lower:
+            w_cutoff = day_val
+            break
+            
+    # Extract time: HH:MM or HHhMM
+    time_match = re.search(r'(\d{1,2})[:h](\d{2})', time_str_lower)
+    if not time_match:
+        return None
+        
+    hours = int(time_match.group(1))
+    minutes = int(time_match.group(2))
+    
+    if 'pm' in time_str_lower and hours < 12:
+        hours += 12
+    elif 'am' in time_str_lower and hours == 12:
+        hours = 0
+        
+    w_start = start_dt.weekday()
+    
+    if w_cutoff is not None:
+        diff_days = w_cutoff - w_start
+        if diff_days < 0:
+            diff_days += 7
+            
+        target_dt = start_dt.replace(hour=hours, minute=minutes, second=0, microsecond=0)
+        target_dt = target_dt + timedelta(days=diff_days)
+        
+        if target_dt < start_dt:
+            target_dt += timedelta(days=7)
+    else:
+        # No weekday specified, assume it is on the same day or next day
+        target_dt = start_dt.replace(hour=hours, minute=minutes, second=0, microsecond=0)
+        if target_dt < start_dt:
+            target_dt += timedelta(days=1)
+            
+    return target_dt
+
 def process_gpx_and_stations_data(
     gpx_content_bytes,
     stations_source,
     official_dist=None,
     no_scale=False,
     generate_garmin=True,
-    generate_suunto=True
+    generate_suunto=True,
+    shorten_names=False,
+    char_limit=15,
+    add_elev=False,
+    start_date=None
 ):
     """
     Processes the raw GPX XML bytes and aid stations list.
@@ -276,13 +385,38 @@ def process_gpx_and_stations_data(
             'element': trkpt
         })
         
+    # Determine start date/time
+    start_dt = None
+    if start_date:
+        try:
+            start_date_clean = start_date.split("+")[0].split("Z")[0]
+            start_dt = datetime.strptime(start_date_clean, "%Y-%m-%dT%H:%M:%S")
+        except Exception:
+            try:
+                start_dt = datetime.fromisoformat(start_date)
+            except Exception:
+                pass
+    
+    if not start_dt:
+        first_pt = track_points[0] if track_points else None
+        if first_pt and first_pt.get('time'):
+            try:
+                first_time_clean = first_pt['time'].split("+")[0].split("Z")[0]
+                start_dt = datetime.strptime(first_time_clean, "%Y-%m-%dT%H:%M:%S")
+            except Exception:
+                pass
+                
+    if not start_dt:
+        start_dt = base_time
+
     # Prepare aid stations
     aid_stations = []
     for station in stations_source:
         aid_stations.append({
             'name': station['name'],
             'official_dist': station['dist'],
-            'symbol': station['symbol']
+            'symbol': station['symbol'],
+            'time_raw': station.get('time', '')
         })
 
     # Determine official total distance
@@ -292,7 +426,7 @@ def process_gpx_and_stations_data(
     if no_scale:
         scale_factor = 1.0
     else:
-        scale_factor = total_gpx_distance / official_dist
+        scale_factor = total_gpx_distance / official_dist if official_dist > 0 else 1.0
     
     # Match aid stations to track coordinates
     matched_stations = []
@@ -309,6 +443,10 @@ def process_gpx_and_stations_data(
                 
         matched_pt = track_points[best_idx]
         
+        resolved_time = None
+        if station['time_raw']:
+            resolved_time = resolve_cutoff_time(station['time_raw'], start_dt)
+        
         matched_stations.append({
             'name': station['name'],
             'official_dist': station['official_dist'],
@@ -319,8 +457,64 @@ def process_gpx_and_stations_data(
             'ele': matched_pt['ele'],
             'time': matched_pt['time'],
             'symbol': station['symbol'],
-            'index': best_idx
+            'index': best_idx,
+            'resolved_time': resolved_time
         })
+        
+    # Linearly interpolate trackpoints timestamps based on the resolved cutoff times (distance weighted)
+    anchors = [(0, start_dt)]
+    for s in sorted(matched_stations, key=lambda x: x['index']):
+        if s['resolved_time']:
+            if s['index'] > anchors[-1][0] and s['resolved_time'] > anchors[-1][1]:
+                anchors.append((s['index'], s['resolved_time']))
+                
+    if anchors[-1][0] < num_pts - 1:
+        if len(anchors) > 1:
+            last_idx, last_time = anchors[-1]
+            prev_idx, prev_time = anchors[-2]
+            idx_diff = last_idx - prev_idx
+            time_diff = last_time - prev_time
+            avg_delta = time_diff / idx_diff if idx_diff > 0 else timedelta(seconds=15)
+            extrapolated_time = last_time + avg_delta * (num_pts - 1 - last_idx)
+            anchors.append((num_pts - 1, extrapolated_time))
+        else:
+            total_hours = total_gpx_distance / 5.0 if total_gpx_distance > 0 else 10
+            extrapolated_time = start_dt + timedelta(hours=total_hours)
+            anchors.append((num_pts - 1, extrapolated_time))
+            
+    # Interpolate trackpoint timestamps
+    for i in range(len(anchors) - 1):
+        idx_start, dt_start = anchors[i]
+        idx_end, dt_end = anchors[i+1]
+        
+        dist_start = track_points[idx_start]['dist']
+        dist_end = track_points[idx_end]['dist']
+        
+        for j in range(idx_start, idx_end + 1):
+            if dist_end > dist_start:
+                f = (track_points[j]['dist'] - dist_start) / (dist_end - dist_start)
+            else:
+                f = (j - idx_start) / (idx_end - idx_start) if idx_end > idx_start else 0.0
+                
+            dt_j = dt_start + (dt_end - dt_start) * f
+            time_str = dt_j.strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            track_points[j]['time'] = time_str
+            
+            time_elem = track_points[j]['element'].find(f'{ns}time')
+            if time_elem is not None:
+                time_elem.text = time_str
+            else:
+                time_elem = ET.SubElement(track_points[j]['element'], f'{ns}time')
+                time_elem.text = time_str
+                
+    # Align all matched station times with the newly interpolated track times
+    for station in matched_stations:
+        station['time'] = track_points[station['index']]['time']
+        
+    # Ensure the last point is understood by Garmin/Suunto/Coros as the Finish line (Sprint symbol)
+    if matched_stations:
+        matched_stations[-1]['symbol'] = 'Sprint'
         
     results = {
         'matched_stations': matched_stations,
@@ -344,9 +538,19 @@ def process_gpx_and_stations_data(
         gpx_sym_map = {
             'Water': 'Water',
             'Food': 'Food',
-            'House': 'Residence',
+            'First Aid': 'Medical',
+            'Aid Station': 'Aid Station',
+            'Toilet': 'Restroom',
+            'Shower': 'Shower',
+            'Campsite': 'Campsite',
+            'Shelter': 'Shelter',
+            'Rest Area': 'Rest Area',
+            'Transition': 'Residence',
             'Summit': 'Summit',
-            'Checkpoint': 'Flag, Blue'
+            'Danger': 'Danger',
+            'Checkpoint': 'Flag, Blue',
+            'Residence': 'Residence',
+            'Sprint': 'Flag, Red'
         }
         
         for station in matched_stations:
@@ -359,7 +563,13 @@ def process_gpx_and_stations_data(
             time_el.text = station['time']
             
             name = ET.SubElement(wpt, f'{ns}name')
-            name.text = clean_poi_name(station['name'], max_len=10)
+            name.text = clean_poi_name(
+                station['name'],
+                max_len=char_limit,
+                shorten_names=shorten_names,
+                add_elev=add_elev,
+                ele=station['ele']
+            )
             
             sym = ET.SubElement(wpt, f'{ns}sym')
             sym.text = gpx_sym_map.get(station['symbol'], 'Waypoint')
@@ -385,9 +595,19 @@ def process_gpx_and_stations_data(
         suunto_type_map = {
             'Water': 'Water',
             'Food': 'Food',
-            'House': 'Hostel',
+            'First Aid': 'Aid_station',
+            'Aid Station': 'Aid_station',
+            'Toilet': 'Toilet',
+            'Shower': 'Shower',
+            'Campsite': 'Campground',
+            'Shelter': 'Shelter',
+            'Rest Area': 'Rest_area',
+            'Transition': 'Crossroads',
             'Summit': 'Hill',
-            'Checkpoint': 'Crossroads'
+            'Danger': 'Danger',
+            'Checkpoint': 'Crossroads',
+            'Residence': 'Crossroads',
+            'Sprint': 'Sprint'
         }
         
         for station in matched_stations:
@@ -400,7 +620,13 @@ def process_gpx_and_stations_data(
             time_el.text = station['time']
             
             name = ET.SubElement(wpt, f'{ns}name')
-            name.text = clean_poi_name(station['name'], max_len=10)
+            name.text = clean_poi_name(
+                station['name'],
+                max_len=char_limit,
+                shorten_names=shorten_names,
+                add_elev=add_elev,
+                ele=station['ele']
+            )
             
             type_el = ET.SubElement(wpt, f'{ns}type')
             type_el.text = suunto_type_map.get(station['symbol'], 'Aid_station')
@@ -417,9 +643,19 @@ def process_gpx_and_stations_data(
         tcx_type_map = {
             'Water': 'Water',
             'Food': 'Food',
-            'House': 'First Aid',
+            'First Aid': 'First Aid',
+            'Aid Station': 'Aid',
+            'Toilet': 'Toilet',
+            'Shower': 'Shower',
+            'Campsite': 'Campsite',
+            'Shelter': 'Shelter',
+            'Rest Area': 'Rest Area',
+            'Transition': 'Transition',
             'Summit': 'Summit',
-            'Checkpoint': 'Generic'
+            'Danger': 'Danger',
+            'Checkpoint': 'Checkpoint',
+            'Residence': 'Generic',
+            'Sprint': 'Sprint'
         }
         
         tcx_lines = [
@@ -462,7 +698,13 @@ def process_gpx_and_stations_data(
         
         for station in matched_stations:
             tcx_type = tcx_type_map.get(station['symbol'], 'Generic')
-            name_clean = clean_poi_name(station['name'], max_len=10)
+            name_clean = clean_poi_name(
+                station['name'],
+                max_len=char_limit,
+                shorten_names=shorten_names,
+                add_elev=add_elev,
+                ele=station['ele']
+            )
             
             tcx_lines.append('      <CoursePoint>')
             tcx_lines.append(f'        <Name>{name_clean}</Name>')
@@ -528,6 +770,22 @@ def main():
         action="store_true",
         help="Disable proportional scaling calibration (match exact raw distances instead)"
     )
+    parser.add_argument(
+        "--shorten",
+        action="store_true",
+        help="Shorten / abbreviate aid station names for Garmin watch compatibility"
+    )
+    parser.add_argument(
+        "--char-limit",
+        type=int,
+        default=15,
+        help="Character limit for POI names (default: 15)"
+    )
+    parser.add_argument(
+        "--add-elev",
+        action="store_true",
+        help="Append elevation directly into the POI name (e.g. RAV 1025m)"
+    )
     args = parser.parse_args()
 
     # Determine which platforms to generate
@@ -582,7 +840,10 @@ def main():
             official_dist=args.official_dist,
             no_scale=args.no_scale,
             generate_garmin=generate_garmin,
-            generate_suunto=generate_suunto
+            generate_suunto=generate_suunto,
+            shorten_names=args.shorten,
+            char_limit=args.char_limit,
+            add_elev=args.add_elev
         )
     except Exception as e:
         print(f"Error executing engine: {e}")
