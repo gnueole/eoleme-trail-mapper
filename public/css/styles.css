@@ -1767,3 +1767,13 @@ body.light-theme .locale-container .custom-dropdown-trigger {
 body.light-theme .poi-table .custom-dropdown-trigger {
     background: rgba(255, 255, 255, 0.8);
 }
+
+/* Responsive header adjustments for mobile viewports */
+@media (max-width: 640px) {
+    .header-container {
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1rem;
+    }
+}
