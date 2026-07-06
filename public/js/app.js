@@ -38,7 +38,7 @@ const btnMergeDownloadTcx = document.getElementById('btn-merge-download-tcx');
 const btnMergeDownloadSuunto = document.getElementById('btn-merge-download-suunto');
 const btnMergeDownloadCoros = document.getElementById('btn-merge-download-coros');
 
-const btnAbout = document.getElementById('btn-about');
+const btnHelp = document.getElementById('btn-help');
 const btnClearState = document.getElementById('btn-clear-state');
 const fileInput = document.getElementById('gpx-file-input');
 const dragDropZone = document.getElementById('gpx-drop-zone');
@@ -121,7 +121,7 @@ function setLanguage(lang) {
     document.querySelectorAll('.version-badge').forEach(el => {
         el.textContent = `Version ${VERSION}`;
     });
-    btnAbout.textContent = TRANSLATIONS[lang].about;
+    btnHelp.textContent = TRANSLATIONS[lang].about;
     btnClearState.textContent = TRANSLATIONS[lang].reset;
     
     const stepHeaders = document.querySelectorAll('.card-header h2');
@@ -199,8 +199,8 @@ function setLanguage(lang) {
     
     renderPOITable();
     
-    // About Section
-    const aboutTitleEl = document.querySelector('#about-modal h2') || document.querySelector('.modal-body h2');
+    // Help Section
+    const aboutTitleEl = document.querySelector('#help-modal h2') || document.querySelector('.modal-body h2');
     if (aboutTitleEl) {
         aboutTitleEl.textContent = TRANSLATIONS[lang].about_title;
     }
@@ -222,7 +222,7 @@ function setLanguage(lang) {
         aboutLis[3].innerHTML = TRANSLATIONS[lang].about_feat4;
         aboutLis[4].innerHTML = TRANSLATIONS[lang].about_feat5;
     }
-    const disclaimerEl = document.getElementById('about-disclaimer') || document.querySelector('.modal-body .disclaimer');
+    const disclaimerEl = document.getElementById('help-disclaimer') || document.querySelector('.modal-body .disclaimer');
     if (disclaimerEl) {
         disclaimerEl.innerHTML = TRANSLATIONS[lang].about_disclaimer;
     }
@@ -1373,24 +1373,24 @@ document.getElementById('btn-add-poi').addEventListener('click', () => {
 });
 
 // Modal triggers
-const aboutModal = document.getElementById('about-modal');
-if (btnAbout && aboutModal) {
-    btnAbout.addEventListener('click', () => {
-        aboutModal.style.display = 'flex';
+const helpModal = document.getElementById('help-modal');
+if (btnHelp && helpModal) {
+    btnHelp.addEventListener('click', () => {
+        helpModal.style.display = 'flex';
     });
 }
 
-const btnCloseModal = document.querySelector('.btn-close');
-if (btnCloseModal && aboutModal) {
-    btnCloseModal.addEventListener('click', () => {
-        aboutModal.style.display = 'none';
+const btnCloseHelp = document.getElementById('btn-close-help') || document.querySelector('.btn-close');
+if (btnCloseHelp && helpModal) {
+    btnCloseHelp.addEventListener('click', () => {
+        helpModal.style.display = 'none';
     });
 }
 
-if (aboutModal) {
-    aboutModal.addEventListener('click', (e) => {
-        if (e.target === aboutModal) {
-            aboutModal.style.display = 'none';
+if (helpModal) {
+    helpModal.addEventListener('click', (e) => {
+        if (e.target === helpModal) {
+            helpModal.style.display = 'none';
         }
     });
 }
