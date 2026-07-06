@@ -52,7 +52,7 @@ DOCKER_SERVICES := trail-mapper
 # ──────────────────────────────────────────────────────────────────────────────
 help:
 	@printf "$(COLOR_CYAN)┌──────────────────────────────────────────────────────────────────────┐$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)                 🏔️  $(COLOR_BOLD)$(PROJECT_NAME)$(COLOR_RESET) Project Makefile 🏔️                $(COLOR_CYAN)│$(COLOR_RESET)\n"
+	@printf "$(COLOR_CYAN)│$(COLOR_RESET)                 🏔️  $(COLOR_BOLD)$(PROJECT_NAME)$(COLOR_RESET) Project Makefile 🏔️                 $(COLOR_CYAN)│$(COLOR_RESET)\n"
 	@printf "$(COLOR_CYAN)├──────────────────────────────────────────────────────────────────────┤$(COLOR_RESET)\n"
 	@printf "$(COLOR_CYAN)│$(COLOR_RESET) $(COLOR_YELLOW)Configuration & Setup:$(COLOR_RESET)                                               $(COLOR_CYAN)│$(COLOR_RESET)\n"
 	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make configure       - Run system configuration and env setup      $(COLOR_CYAN)│$(COLOR_RESET)\n"

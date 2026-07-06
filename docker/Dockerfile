@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend files and static assets
 COPY garmin_course_injector.py .
 COPY server.py .
+COPY utils ./utils
 COPY public ./public
 
 # Expose the configured Traefik port
