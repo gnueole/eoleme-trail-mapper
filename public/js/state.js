@@ -13,7 +13,8 @@ export let state = {
     raceOfficialUrl: null,
     raceStartDate: null,
     raceDirectEntry: null,
-    unit: 'km' // km or mi
+    unit: 'km', // km or mi
+    mapMode: 'sync' // sync, light, dark
 };
 
 export function saveStateToLocalStorage() {
@@ -41,6 +42,7 @@ export function saveStateToLocalStorage() {
             raceStartDate: state.raceStartDate || null,
             raceDirectEntry: state.raceDirectEntry || null,
             unit: state.unit || 'km',
+            mapMode: state.mapMode || 'sync',
             settings: {
                 charLimit: settingCharLimit ? settingCharLimit.value : '15',
                 snapThreshold: settingSnapThreshold ? settingSnapThreshold.value : '150',

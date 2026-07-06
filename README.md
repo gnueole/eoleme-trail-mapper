@@ -9,8 +9,8 @@ Author: [Eole](https://eole.me) <[EMAIL_ADDRESS]>
 
 Reach the finish line of your ultra with a map that guides you to every checkpoint.
 
-![Garmin Course Points on Watch Screen](public/garmin-screenshot.png)
-![Trail Mapper Web Interface](public/trail-mapper-webui.png)
+![Garmin Course Points on Watch Screen](public/images/garmin-screenshot.png)
+![Trail Mapper Web Interface](public/images/trail-mapper-webui.png)
 
 A high-performance, responsive frontend utility designed for ultra-trail runners. It parses UTMB race tables (either fetched from UTMB URLs or pasted as raw text/HTML), visualizes GPX routes on an interactive Leaflet map, displays a custom-rendered elevation profile, and merges checkpoints/aid stations directly into the GPX track as Garmin-compliant **Course Points** (`<coursepoint>`).
 

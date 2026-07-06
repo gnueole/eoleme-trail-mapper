@@ -1,4 +1,4 @@
-import { state } from './state.js?v=1.0.5';
+import { state } from './state.js';
 
 export let map = null;
 export let trackShadowLayer = null;
@@ -14,10 +14,36 @@ export function initMap(elementId) {
         attributionControl: false
     }).setView([45.9227, 6.8685], 11); // Default to Chamonix
     
-    // Add OpenTopoMap terrain tiles
-    L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-        maxZoom: 17
-    }).addTo(map);
+    // 1. Muted Topographic Layer (Mutes busy terrain to make path/checkpoints readable)
+    const mutedTopo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        maxZoom: 17,
+        opacity: 0.7,
+        attribution: 'Map: &copy; OpenTopoMap (CC-BY-SA)'
+    });
+    
+    // 2. Full Topographic Layer (Classic layout)
+    const fullTopo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        maxZoom: 17,
+        attribution: 'Map: &copy; OpenTopoMap (CC-BY-SA)'
+    });
+    
+    // 3. Clean Street Map Layer
+    const cleanStreet = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+    });
+    
+    // Add Muted Topographic as default
+    mutedTopo.addTo(map);
+    
+    // Add layer selector control
+    const baseLayers = {
+        "Muted Topographic": mutedTopo,
+        "Full Topographic": fullTopo,
+        "Clean Street Map": cleanStreet
+    };
+    
+    L.control.layers(baseLayers, null, { position: 'topleft' }).addTo(map);
 
     return map;
 }
@@ -142,29 +168,8 @@ export function drawRouteOnMap() {
     const latLons = state.gpxTrackPoints.map(p => [p.lat, p.lon]);
     if (latLons.length === 0) return;
     
-    // Resolve dynamic track color based on kilometer-effort or state.raceCategory
-    const dist = state.totalDistance;
-    const isTDS = state.raceName && state.raceName.toUpperCase().includes('TDS');
-    const cat = state.raceCategory ? state.raceCategory.toUpperCase().replace('WS', '').replace('KM', 'K') : '';
-    const kmEffort = dist + (state.totalGain / 100);
-    
-    let trackColor = '#7ddf65';
-    if (isTDS) {
-        trackColor = '#00ade9';
-    } else if (cat.includes('100M')) {
-        trackColor = '#ef4444';
-    } else if (cat.includes('100K')) {
-        trackColor = '#7ddf65';
-    } else if (cat.includes('50K')) {
-        trackColor = '#ff9600';
-    } else if (cat.includes('20K')) {
-        trackColor = '#ffff00';
-    } else {
-        if (kmEffort < 35) trackColor = '#ffff00';
-        else if (kmEffort < 80) trackColor = '#ff9600';
-        else if (kmEffort < 140) trackColor = '#7ddf65';
-        else trackColor = '#ef4444';
-    }
+    // Resolve dynamic track color based on kilometer-effort or category theme
+    const theme = getRaceTheme(state.raceName, state.raceCategory, state.totalDistance, state.totalGain);
     
     // Create dark shadow layer (wider) for background legibility
     trackShadowLayer = L.polyline(latLons, {
@@ -175,7 +180,7 @@ export function drawRouteOnMap() {
     }).addTo(map);
     
     trackLayer = L.polyline(latLons, {
-        color: trackColor,
+        color: theme.color,
         weight: 4,
         opacity: 0.95
     }).addTo(map);
@@ -318,4 +323,91 @@ export function clearHoverMarker() {
         map.removeLayer(hoveredMapMarker);
         hoveredMapMarker = null;
     }
+}
+
+export function updateTrackColor(color) {
+    if (trackLayer && typeof trackLayer.setStyle === 'function') {
+        trackLayer.setStyle({ color: color });
+    }
+}
+
+/**
+ * Utility to convert Hex color codes (e.g. "#ef4444") to RGBA strings dynamically.
+ * This avoids redundant storage of RGB representations in the theme configuration mapping.
+ * 
+ * @param {string} hex - Hex color code (3 or 6 characters, optional hash prefix)
+ * @param {number} alpha - Opacity value between 0 and 1
+ * @returns {string} rgba string
+ */
+export function hexToRgba(hex, alpha = 1) {
+    const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+    const fullHex = hex.replace(shorthandRegex, (m, r, g, b) => r + r + g + g + b + b);
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(fullHex);
+    return result ? `rgba(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}, ${alpha})` : '';
+}
+
+/**
+ * Registry of race difficulty themes, mapping categories to styling tokens.
+ * To extend with a new theme, simply add an entry here.
+ */
+export const THEME_MAPPING = {
+    'TDS':  { color: '#00ade9', className: 'difficulty-tds' },
+    'MCC':  { color: '#0b6938', className: 'difficulty-mcc' },
+    'PTL':  { color: '#831f82', className: 'difficulty-ptl' },
+    'YCC':  { color: '#e6007e', className: 'difficulty-ycc' },
+    '100M': { color: '#ef4444', className: 'difficulty-100m' },
+    '100K': { color: '#7ddf65', className: 'difficulty-100k' },
+    '50K':  { color: '#ff9600', className: 'difficulty-50k' },
+    '20K':  { color: '#ffff00', className: 'difficulty-20k' }
+};
+
+/**
+ * Resolves the theme color and difficulty class based on race parameters.
+ * Scales dynamically to a theme based on kilometer-effort if no specific category matches.
+ * 
+ * @param {string} raceName - Name of the race
+ * @param {string} category - Official UTMB category (e.g. 100M, 50K)
+ * @param {number} distance - Total distance in km
+ * @param {number} gain - Total positive gain in meters
+ * @returns {{color: string, className: string}} Resolved styling tokens
+ */
+export function getRaceTheme(raceName, category, distance, gain) {
+    const nameUpper = raceName ? raceName.toUpperCase() : '';
+    const cat = category ? category.toUpperCase().replace('WS', '').replace('KM', 'K') : '';
+    const kmEffort = distance + (gain / 100);
+    
+    if (nameUpper.includes('TDS')) {
+        return THEME_MAPPING['TDS'];
+    }
+    if (nameUpper.includes('MCC') || nameUpper.includes('MARTIGNY') || cat.includes('MCC')) {
+        return THEME_MAPPING['MCC'];
+    }
+    if (nameUpper.includes('PTL') || nameUpper.includes('TROTTE') || nameUpper.includes('LEON') || nameUpper.includes('LÉON') || cat.includes('PTL')) {
+        return THEME_MAPPING['PTL'];
+    }
+    if (nameUpper.includes('YCC') || nameUpper.includes('YOUTH') || cat.includes('YCC')) {
+        return THEME_MAPPING['YCC'];
+    }
+    
+    // Check if category matches one of our predefined keys
+    for (const key of Object.keys(THEME_MAPPING)) {
+        if (key !== 'TDS' && key !== 'MCC' && key !== 'PTL' && key !== 'YCC' && cat.includes(key)) {
+            return THEME_MAPPING[key];
+        }
+    }
+    
+    // Dynamic distance-effort scaling fallback
+    if (distance > 0) {
+        if (kmEffort < 35) {
+            return THEME_MAPPING['20K'];
+        } else if (kmEffort < 80) {
+            return THEME_MAPPING['50K'];
+        } else if (kmEffort < 140) {
+            return THEME_MAPPING['100K'];
+        } else {
+            return THEME_MAPPING['100M'];
+        }
+    }
+    
+    return THEME_MAPPING['100K']; // Default fallback
 }

@@ -1,0 +1,169 @@
+{
+  "name": "Trail Mapper - Telemetry to Notion",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trail-mapper-telemetry",
+        "options": {
+          "responseCode": {
+            "values": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        250,
+        240
+      ],
+      "id": "webhook-trigger",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "={{ $('Get Notion DB ID').item.json.value }}",
+          "mode": "id"
+        },
+        "title": "Event",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Event|title",
+              "title": "={{ $json.body.event_type }}"
+            },
+            {
+              "key": "Light/Dark mode|select",
+              "selectValue": "={{ $json.body.theme === 'light' ? 'Light' : 'Dark' }}"
+            },
+            {
+              "key": "Race Name|rich_text",
+              "textContent": "={{ $json.body.payload.race_name || '' }}"
+            },
+            {
+              "key": "Export button pressed|checkbox",
+              "checkboxValue": "={{ $json.body.event_type === 'export_pressed' }}"
+            },
+            {
+              "key": "Distance (km)|number",
+              "numberValue": "={{ $json.body.payload.distance ? (parseFloat($json.body.payload.distance) * ($json.body.payload.distance.includes('mi') ? 1.60934 : 1)) : null }}"
+            },
+            {
+              "key": "Elevation (m)|number",
+              "numberValue": "={{ $json.body.payload.elevation ? (parseFloat($json.body.payload.elevation.replace(/[^0-9.-]/g, '')) / ($json.body.payload.elevation.includes('ft') ? 3.28084 : 1)) : null }}"
+            },
+            {
+              "key": "Checkpoints Count|number",
+              "numberValue": "={{ $json.body.payload.checkpoint_count || null }}"
+            },
+            {
+              "key": "Export Format|select",
+              "selectValue": "={{ $json.body.payload.format || null }}"
+            },
+            {
+              "key": "Metering System|select",
+              "selectValue": "={{ $json.body.payload.unit || ($json.body.payload.distance && $json.body.payload.distance.includes('mi') ? 'mi' : 'km') }}"
+            },
+            {
+              "key": "User Agent|rich_text",
+              "textContent": "={{ $json.body.payload.userAgent || '' }}"
+            },
+            {
+              "key": "Screen Size|rich_text",
+              "textContent": "={{ $json.body.payload.screenSize || '' }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        700,
+        240
+      ],
+      "id": "notion-node",
+      "name": "Notion",
+      "credentials": {
+        "notionApi": {
+          "id": "KYrsxF0plfLkPpqW",
+          "name": "Notion LinkedIn Auto"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "### Last Publish Info\n\nPublished on 2026-07-06 16:12:56 | Git: 13ac1bc chore: update n8n orchestration workflows",
+        "height": 150,
+        "width": 300,
+        "color": 6
+      },
+      "id": "2b08e8e6-4d87-415c-bafc-36ff25ff7a2b",
+      "name": "Last Publish Info",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -100,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "OtWoNuYUmoj7knoz",
+          "mode": "id"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "key",
+              "keyValue": "trail_mapper_telemetry_db_id"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        480,
+        240
+      ],
+      "id": "get-notion-db-id",
+      "name": "Get Notion DB ID"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Notion DB ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Notion DB ID": {
+      "main": [
+        [
+          {
+            "node": "Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": true,
+  "//": "Published on 2026-07-06 16:12:56 | Git: 13ac1bc chore: update n8n orchestration workflows"
+}

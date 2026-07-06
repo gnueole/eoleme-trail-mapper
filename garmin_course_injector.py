@@ -103,7 +103,7 @@ def abbreviate_name(name: str) -> str:
     
     return res
 
-def clean_poi_name(name, max_len=10, shorten_names=False, add_elev=False, ele=None):
+def clean_poi_name(name, max_len=10, shorten_names=False, add_elev=False, ele=None, unit='km'):
     """
     Cleans a string to be Garmin-compatible (ASCII only, no special characters or accents),
     optionally abbreviates common words, optionally appends elevation, and truncates
@@ -116,8 +116,12 @@ def clean_poi_name(name, max_len=10, shorten_names=False, add_elev=False, ele=No
     # 2. Append elevation if requested and present
     if add_elev and ele is not None:
         try:
-            ele_int = int(round(float(ele)))
-            name = f"{name} {ele_int}m"
+            if unit == 'mi':
+                ele_ft = int(round(float(ele) * 3.28084))
+                name = f"{name} {ele_ft}ft"
+            else:
+                ele_int = int(round(float(ele)))
+                name = f"{name} {ele_int}m"
         except (ValueError, TypeError):
             pass
 
@@ -320,7 +324,8 @@ def process_gpx_and_stations_data(
     shorten_names=False,
     char_limit=15,
     add_elev=False,
-    start_date=None
+    start_date=None,
+    unit='km'
 ):
     """
     Processes the raw GPX XML bytes and aid stations list.
@@ -568,7 +573,8 @@ def process_gpx_and_stations_data(
                 max_len=char_limit,
                 shorten_names=shorten_names,
                 add_elev=add_elev,
-                ele=station['ele']
+                ele=station['ele'],
+                unit=unit
             )
             
             sym = ET.SubElement(wpt, f'{ns}sym')
@@ -625,7 +631,8 @@ def process_gpx_and_stations_data(
                 max_len=char_limit,
                 shorten_names=shorten_names,
                 add_elev=add_elev,
-                ele=station['ele']
+                ele=station['ele'],
+                unit=unit
             )
             
             type_el = ET.SubElement(wpt, f'{ns}type')
@@ -703,7 +710,8 @@ def process_gpx_and_stations_data(
                 max_len=char_limit,
                 shorten_names=shorten_names,
                 add_elev=add_elev,
-                ele=station['ele']
+                ele=station['ele'],
+                unit=unit
             )
             
             tcx_lines.append('      <CoursePoint>')

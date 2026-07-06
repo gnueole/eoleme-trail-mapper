@@ -30,13 +30,18 @@ export function shortenNameForGarmin(name) {
     return res;
 }
 
-export function generateGarminName(name, ele) {
+export function generateGarminName(name, ele, unit = 'km') {
     let clean = shortenNameForGarmin(name).trim();
     const settingAddElevToName = document.getElementById('add-elev-to-name');
     const settingCharLimit = document.getElementById('char-limit');
     
     if (settingAddElevToName && settingAddElevToName.checked && ele) {
-        clean = `${clean} ${ele}m`;
+        if (unit === 'mi') {
+            const eleFt = Math.round(ele * 3.28084);
+            clean = `${clean} ${eleFt}ft`;
+        } else {
+            clean = `${clean} ${ele}m`;
+        }
     }
     
     // Apply character truncation

@@ -10,3 +10,9 @@ node_modules/
 # --- Logs ---
 *.log
 logs/
+
+# --- Python ---
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

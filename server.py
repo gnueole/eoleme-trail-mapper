@@ -8,207 +8,15 @@ from urllib.parse import urlparse
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 import defusedxml.ElementTree as DET
 from garmin_course_injector import process_gpx_and_stations_data
 
-def get_version() -> str:
-    try:
-        version_path = os.path.join(os.path.dirname(__file__), "public", "version.js")
-        with open(version_path, "r", encoding="utf-8") as f:
-            content = f.read()
-            m = re.search(r"VERSION\s*=\s*['\"]([^'\"]+)['\"]", content)
-            if m:
-                return m.group(1)
-    except Exception:
-        pass
-    return "1.0.0"
+# Import split utility submodules
+from utils.security import get_version, is_safe_url
+from utils.parsers import guess_waypoint_symbol, parse_utmb_next_data, parse_livetrail_xml, convert_livetrail_js_to_gpx
 
 app = FastAPI(title="Trail Mapper & GPX POI Injector Backend", version=get_version())
-
-# SSRF Guard helper
-def is_safe_url(url: str) -> bool:
-    try:
-        parsed = urlparse(url)
-        if parsed.scheme not in ('http', 'https'):
-            return False
-        
-        hostname = parsed.hostname
-        if not hostname:
-            return False
-        
-        # Prevent DNS rebinding and internal network requests by resolving the IP
-        addr_info = socket.getaddrinfo(hostname, None)
-        for addr in addr_info:
-            ip_str = addr[4][0]
-            ip = ipaddress.ip_address(ip_str)
-            if (ip.is_private or 
-                ip.is_loopback or 
-                ip.is_multicast or 
-                ip.is_reserved or 
-                ip.is_link_local or
-                ip.is_unspecified):
-                return False
-        return True
-    except Exception:
-        return False
-
-def guess_waypoint_symbol(name: str) -> str:
-    name_lower = name.lower()
-    
-    # Food guessers
-    if any(k in name_lower for k in ("ravit", "food", "repas", "restau", "cade", "brunch", "manger", "snack")):
-        return "Food"
-    
-    # Water guessers
-    if any(k in name_lower for k in ("eau", "water", "sourc", "fontaine", "peyreleau", "drink", "hydra")):
-        return "Water Source"
-        
-    # Summit guessers
-    if any(k in name_lower for k in ("sommet", "peak", "col", "mont", "aiguille", "tête", "tete", "crête", "crete", "dôme", "dome", "pouncho", "nez", "crest", "hill", "pass")):
-        return "Summit"
-        
-    # Medical guessers
-    if any(k in name_lower for k in ("secour", "medical", "aid", "croix", "red cross", "infirmerie", "doctor", "clinique")):
-        return "Medical Facility"
-        
-    # Shelter guessers
-    if any(k in name_lower for k in ("refuge", "chalet", "gîte", "gite", "shelter", "cabane", "auberge", "hut", "cabin")):
-        return "Shelter"
-        
-    # Campsite guessers
-    if any(k in name_lower for k in ("camp", "campsite", "camping", "bivouac")):
-        return "Campsite"
-        
-    # Rest area / Restroom guessers
-    if any(k in name_lower for k in ("toilet", "wc", "sanit", "restroom", "douche", "shower")):
-        return "Toilet"
-        
-    # Danger guessers
-    if any(k in name_lower for k in ("danger", "warning", "diffic", "risk", "attention", "caillou")):
-        return "Danger"
-        
-    # Default fallback is Checkpoint instead of Residence (Generic Point)
-    return "Checkpoint"
-
-def parse_utmb_next_data(html: str) -> dict:
-    """
-    Parses the __NEXT_DATA__ script block from a UTMB Next.js page.
-    Returns a dict with 'stations', 'gpx_link', and 'metadata' if successful, or None.
-    """
-    try:
-        # Search for the script block
-        match = re.search(r'<script\s+id="__NEXT_DATA__"\s+type="application/json">(.*?)</script>', html, re.S)
-        if not match:
-            return None
-        
-        data = json.loads(match.group(1))
-        page_props = data.get("props", {}).get("pageProps", {})
-        
-        gpx_link = page_props.get("gpxUrl")
-        track = page_props.get("track", {})
-        points = track.get("points", [])
-        
-        if not points and not gpx_link:
-            return None
-            
-        # Parse page metadata
-        page_header = page_props.get("pageHeader", {})
-        banner_stats = page_props.get("bannerStats", [])
-        main_stats = page_props.get("mainStats", [])
-        
-        category = None
-        running_stones = None
-        direct_entry = None
-        for ms in main_stats:
-            if ms.get("name") == "categoryWorldSeries":
-                category = ms.get("value")
-            elif ms.get("name") == "runningStones":
-                running_stones = ms.get("value")
-            elif ms.get("name") == "directEntry":
-                direct_entry = ms.get("value")
-                
-        logo_url = None
-        race_logo = page_props.get("raceLogo", {})
-        if race_logo:
-            logo_img = race_logo.get("light") or race_logo.get("dark")
-            if logo_img:
-                pub_id = logo_img.get("publicId")
-                fmt = logo_img.get("format", "png")
-                if pub_id:
-                    from urllib.parse import quote
-                    logo_url = f"https://res.cloudinary.com/utmb-world/image/upload/f_auto,q_auto/{quote(pub_id)}.{fmt}"
-        
-        metadata = {
-            "course_name": page_header.get("title") or "Custom Trail Race",
-            "distance": None,
-            "elevation": None,
-            "start_location": None,
-            "start_date": page_header.get("startDate"),
-            "category": category,
-            "running_stones": running_stones,
-            "direct_entry": direct_entry,
-            "logo_url": logo_url
-        }
-        
-        for stat in banner_stats:
-            name = stat.get("name")
-            val = stat.get("value")
-            postfix = stat.get("postfix") or ""
-            if name == "distance":
-                metadata["distance"] = f"{val} {postfix}".strip()
-            elif name == "elevationGain":
-                metadata["elevation"] = f"{val} {postfix} D+".strip()
-            elif name == "startDate":
-                metadata["start_date"] = val
-            elif name == "startPlaceAndTime":
-                metadata["start_location"] = val
-                
-        if not metadata["distance"] and track.get("distance"):
-            metadata["distance"] = f"{track.get('distance') / 1000.0:.1f} km"
-        if not metadata["elevation"] and track.get("gainElevation"):
-            metadata["elevation"] = f"{track.get('gainElevation')} m D+"
-            
-        stations = []
-        for idx, pt in enumerate(points):
-            name = pt.get("name", f"Station {idx}")
-            dist_m = pt.get("distance", 0.0)
-            dist_val = dist_m / 1000.0  # Convert to km
-            ele_val = pt.get("elevation", 0)
-            
-            # Map Garmin icon
-            supplies = pt.get("supplies", "none")
-            has_medical = pt.get("hasMedical", False)
-            
-            if has_medical:
-                sym = "Medical Facility"
-            elif supplies in ("food", "complete"):
-                sym = "Food"
-            elif supplies == "drink":
-                sym = "Water Source"
-            else:
-                sym = guess_waypoint_symbol(name)
-            
-            stations.append({
-                "id": f"scraped_{idx}",
-                "name": name[:30],
-                "dist": dist_val,
-                "ele": ele_val,
-                "icon": sym,
-                "use": True,
-                "lat": pt.get("lat"),
-                "lon": pt.get("lon"),
-                "time": pt.get("cutoff") or pt.get("slowest") or ""
-            })
-            
-        return {
-            "stations": stations,
-            "gpx_link": gpx_link,
-            "metadata": metadata
-        }
-    except Exception as e:
-        print(f"Error parsing Next.js __NEXT_DATA__: {e}")
-        return None
 
 # Pydantic models for request bodies
 class DownloadGpxRequest(BaseModel):
@@ -228,6 +36,28 @@ def download_gpx(payload: DownloadGpxRequest):
     if not is_safe_url(url):
         raise HTTPException(status_code=400, detail="URL is unsafe or resolved to a private network address (SSRF Protection).")
     
+    parsed_url = urlparse(url)
+    if 'livetrail.net' in parsed_url.netloc.lower() and ('/data/gmData_' in parsed_url.path or 'gmdata_' in parsed_url.path.lower()):
+        m = re.search(r'gmData_([a-zA-Z0-9_-]+)\.js', url, re.I)
+        if m:
+            course_id = m.group(1)
+            clean_url = re.sub(r'\.v\d+\.', '.', url, flags=re.I)
+            try:
+                req = urllib.request.Request(
+                    clean_url,
+                    headers={'User-Agent': 'Mozilla/5.0'}
+                )
+                with urllib.request.urlopen(req, timeout=10) as response:
+                    js_content = response.read().decode('utf-8', errors='replace')
+                gpx_xml = convert_livetrail_js_to_gpx(js_content, course_id)
+                if not gpx_xml:
+                    raise HTTPException(status_code=400, detail="Failed to parse coordinate track array from LiveTrail JS payload.")
+                return Response(content=gpx_xml, media_type="application/xml")
+            except Exception as e:
+                if isinstance(e, HTTPException):
+                    raise e
+                raise HTTPException(status_code=500, detail=f"Failed to fetch or parse LiveTrail JS data: {e}")
+
     try:
         req = urllib.request.Request(
             url,
@@ -268,6 +98,53 @@ def parse_url(payload: ParseUrlRequest):
     url = payload.url
     if not is_safe_url(url):
         raise HTTPException(status_code=400, detail="URL is unsafe or resolved to a private network address (SSRF Protection).")
+    
+    parsed_url = urlparse(url)
+    if 'livetrail.net' in parsed_url.netloc.lower():
+        netloc = re.sub(r'\.v\d+\.', '.', parsed_url.netloc.lower())
+        base_url = f"{parsed_url.scheme}://{netloc}"
+        
+        # Parse query params
+        query_params = {}
+        if parsed_url.query:
+            for q in parsed_url.query.split('&'):
+                if '=' in q:
+                    k, v = q.split('=', 1)
+                    query_params[k] = v
+        course_id = query_params.get('course')
+        
+        parcours_url = f"{base_url}/parcours.php"
+        if course_id:
+            parcours_url += f"?course={course_id}"
+            
+        try:
+            req = urllib.request.Request(
+                parcours_url,
+                headers={'User-Agent': 'Mozilla/5.0'}
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                xml_content = response.read().decode('utf-8', errors='replace')
+                
+            parsed_data = parse_livetrail_xml(xml_content, course_id)
+            if parsed_data:
+                actual_course_id = parsed_data["course_id"]
+                return JSONResponse(content={
+                    "stations": parsed_data["stations"],
+                    "gpx_link": f"{base_url}/data/gmData_{actual_course_id}.js",
+                    "metadata": {
+                        "course_name": parsed_data["course_name"],
+                        "distance": f"{parsed_data['total_distance']:.1f} km",
+                        "elevation": f"{parsed_data['total_gain']} m D+",
+                        "start_location": "LiveTrail",
+                        "start_date": None,
+                        "category": actual_course_id,
+                        "running_stones": None,
+                        "direct_entry": None,
+                        "logo_url": f"{base_url}/im/favicon.png"
+                    }
+                })
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch or parse LiveTrail course data: {e}")
     
     # If the user has an n8n webhook URL configured in environment, route through it
     n8n_url = os.environ.get("N8N_PARSER_WEBHOOK_URL")
@@ -451,7 +328,8 @@ async def merge_data(
     shorten_names: bool = Form(False),
     char_limit: int = Form(15),
     add_elev: bool = Form(False),
-    start_date: str = Form(None)
+    start_date: str = Form(None),
+    unit: str = Form("km")
 ):
     try:
         # Load and validate stations json
@@ -507,7 +385,8 @@ async def merge_data(
             shorten_names=shorten_names,
             char_limit=char_limit,
             add_elev=add_elev,
-            start_date=start_date
+            start_date=start_date,
+            unit=unit
         )
         
         # Return generated payloads as JSON
@@ -522,5 +401,53 @@ async def merge_data(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
 
-# Mount static files folder
-app.mount("/trail-mapper", StaticFiles(directory="public", html=True), name="public")
+# Telemetry Payload Model
+class TelemetryRequest(BaseModel):
+    event_type: str
+    user_id: str
+    session_id: str
+    locale: str
+    theme: str
+    payload: dict
+
+@app.post("/trail-mapper/api/telemetry")
+async def receive_telemetry(data: TelemetryRequest):
+    """
+    Forwards event telemetry payloads to the configured n8n webhook URL.
+    Bypasses execution if running in dev environment.
+    """
+    env = os.environ.get("DOPPLER_ENVIRONMENT", "prod")
+    if env == "dev":
+        return {"status": "skipped", "reason": "dev_environment"}
+        
+    n8n_url = os.environ.get("N8N_TRAIL_MAPPER_TELEMETRY_WEBHOOK_URL") or os.environ.get("N8N_TELEMETRY_WEBHOOK_URL")
+    if not n8n_url:
+        return {"status": "skipped", "reason": "webhook_not_configured"}
+
+    try:
+        req_payload = data.dict()
+        req_data = json.dumps(req_payload).encode('utf-8')
+        req = urllib.request.Request(
+            n8n_url,
+            data=req_data,
+            headers={'Content-Type': 'application/json'}
+        )
+        # Timeout at 2 seconds so we don't block
+        with urllib.request.urlopen(req, timeout=2) as response:
+            pass
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# Mount static files folder with cache validation control headers
+class CacheControlledStaticFiles(StaticFiles):
+    def __init__(self, *args, cache_control: str = "no-cache, must-revalidate", **kwargs):
+        self.cache_control = cache_control
+        super().__init__(*args, **kwargs)
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = self.cache_control
+        return response
+
+app.mount("/trail-mapper", CacheControlledStaticFiles(directory="public", html=True), name="public")

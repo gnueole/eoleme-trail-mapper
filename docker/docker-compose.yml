@@ -12,6 +12,8 @@ services:
       - ../public:/app/public
       - ../server.py:/app/server.py
       - ../garmin_course_injector.py:/app/garmin_course_injector.py
+      - ../tests:/app/tests
+      - ../utils:/app/utils
     command: uvicorn server:app --host 0.0.0.0 --port 3000 --reload
     networks:
       - eole_shared_network

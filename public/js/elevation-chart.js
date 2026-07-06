@@ -1,5 +1,5 @@
-import { state } from './state.js?v=1.0.5';
-import { getSymbolColor, updateHoverMarker, clearHoverMarker } from './map-utils.js?v=1.0.5';
+import { state } from './state.js';
+import { getSymbolColor, updateHoverMarker, clearHoverMarker, getRaceTheme, hexToRgba } from './map-utils.js';
 
 export function drawElevationProfile() {
     const canvas = document.getElementById('elevation-canvas');
@@ -95,48 +95,12 @@ export function drawElevationProfile() {
     ctx.lineTo(getX(0), paddingTop + chartHeight);
     ctx.closePath();
     
-    const dist = state.totalDistance;
-    const isTDS = state.raceName && state.raceName.toUpperCase().includes('TDS');
-    const cat = state.raceCategory ? state.raceCategory.toUpperCase().replace('WS', '').replace('KM', 'K') : '';
-    const kmEffort = dist + (state.totalGain / 100);
-    
-    let rgb = '125, 223, 101'; // default 100K
-    let hexColor = '#7ddf65';
-    
-    if (isTDS) {
-        rgb = '0, 173, 233';
-        hexColor = '#00ade9';
-    } else if (cat.includes('100M')) {
-        rgb = '239, 68, 68';
-        hexColor = '#ef4444';
-    } else if (cat.includes('100K')) {
-        rgb = '125, 223, 101';
-        hexColor = '#7ddf65';
-    } else if (cat.includes('50K')) {
-        rgb = '255, 150, 0';
-        hexColor = '#ff9600';
-    } else if (cat.includes('20K')) {
-        rgb = '255, 255, 0';
-        hexColor = '#ffff00';
-    } else if (dist > 0) {
-        if (kmEffort < 35) {
-            rgb = '255, 255, 0';
-            hexColor = '#ffff00';
-        } else if (kmEffort < 80) {
-            rgb = '255, 150, 0';
-            hexColor = '#ff9600';
-        } else if (kmEffort < 140) {
-            rgb = '125, 223, 101';
-            hexColor = '#7ddf65';
-        } else {
-            rgb = '239, 68, 68';
-            hexColor = '#ef4444';
-        }
-    }
+    // Resolve dynamic track theme from map-utils helper
+    const theme = getRaceTheme(state.raceName, state.raceCategory, state.totalDistance, state.totalGain);
     
     const fillGradient = ctx.createLinearGradient(0, paddingTop, 0, paddingTop + chartHeight);
-    fillGradient.addColorStop(0, `rgba(${rgb}, 0.3)`);
-    fillGradient.addColorStop(1, `rgba(${rgb}, 0.01)`);
+    fillGradient.addColorStop(0, hexToRgba(theme.color, 0.3));
+    fillGradient.addColorStop(1, hexToRgba(theme.color, 0.01));
     ctx.fillStyle = fillGradient;
     ctx.fill();
     
@@ -145,7 +109,7 @@ export function drawElevationProfile() {
     for (let i = 1; i < points.length; i++) {
         ctx.lineTo(getX(points[i].dist), getY(points[i].ele));
     }
-    ctx.strokeStyle = hexColor;
+    ctx.strokeStyle = theme.color;
     ctx.lineWidth = 2;
     ctx.stroke();
     

@@ -1,5 +1,5 @@
-import { state, saveStateToLocalStorage } from './state.js?v=1.0.5';
-import { TRANSLATIONS, getSymbolLabel, SYMBOL_LABELS } from './translations.js?v=1.0.5';
+import { state, saveStateToLocalStorage } from './state.js';
+import { TRANSLATIONS, getSymbolLabel, SYMBOL_LABELS } from './translations.js';
 import { 
     initMap, 
     drawRouteOnMap, 
@@ -7,11 +7,13 @@ import {
     snapPOIsToTrack, 
     getMiniIconSvg,
     invalidateMapSize,
-    getSymbolColor
-} from './map-utils.js?v=1.0.5';
-import { drawElevationProfile, initElevationChartListeners } from './elevation-chart.js?v=1.0.5';
-import { shortenNameForGarmin, generateGarminName } from './utils.js?v=1.0.5';
-import { VERSION } from './version.js?v=1.0.5';
+    getSymbolColor,
+    updateTrackColor,
+    getRaceTheme
+} from './map-utils.js';
+import { drawElevationProfile, initElevationChartListeners } from './elevation-chart.js';
+import { shortenNameForGarmin, generateGarminName } from './utils.js';
+import { VERSION } from './version.js';
 
 // DOM Selectors
 const raceUrlInput = document.getElementById('race-url');
@@ -38,9 +40,57 @@ const btnMergeDownloadCoros = document.getElementById('btn-merge-download-coros'
 
 const btnAbout = document.getElementById('btn-about');
 const btnClearState = document.getElementById('btn-clear-state');
-const fileInput = document.getElementById('gpx-file');
-const dragDropZone = document.getElementById('drag-drop-zone');
-const dragDropFileName = document.getElementById('drag-drop-file-name');
+const fileInput = document.getElementById('gpx-file-input');
+const dragDropZone = document.getElementById('gpx-drop-zone');
+const dragDropFileName = document.getElementById('gpx-file-name');
+
+// Telemetry tracking helper
+export function trackEvent(eventType, payload = {}) {
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.local');
+    if (isDev) {
+        console.log('[Telemetry Skip - DEV]', eventType, payload);
+        return;
+    }
+    
+    try {
+        if (localStorage.getItem('telemetry-opt-out') === 'true') {
+            console.log('[Telemetry Skip - Opt-Out]', eventType, payload);
+            return;
+        }
+    } catch (e) {}
+
+    // Ensure session ID and user ID exist
+    let userId = localStorage.getItem('telemetry-user-id');
+    if (!userId) {
+        userId = 'usr_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        try {
+            localStorage.setItem('telemetry-user-id', userId);
+        } catch (e) {}
+    }
+
+    let sessionId = sessionStorage.getItem('telemetry-session-id');
+    if (!sessionId) {
+        sessionId = 'sess_' + Math.random().toString(36).substring(2, 15);
+        try {
+            sessionStorage.setItem('telemetry-session-id', sessionId);
+        } catch (e) {}
+    }
+
+    fetch('/trail-mapper/api/telemetry', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            event_type: eventType,
+            user_id: userId,
+            session_id: sessionId,
+            locale: state.locale || 'en',
+            theme: document.body.classList.contains('light-theme') ? 'light' : 'dark',
+            payload: payload
+        })
+    }).catch(err => console.error('Telemetry error:', err));
+}
 
 // Language management
 function setLanguage(lang) {
@@ -52,8 +102,19 @@ function setLanguage(lang) {
     const selector = document.getElementById('locale-selector');
     if (selector) selector.value = lang;
 
-    // Update translations in layout
-    document.querySelector('.branding h1').innerHTML = `${TRANSLATIONS[lang].title} <span class="version-label"></span>`;
+    // Update translations in layout with optional DEV badge
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.endsWith('.local');
+    const devBadge = isDev ? ' <span class="dev-badge">DEV</span>' : '';
+    document.querySelector('.branding h1').innerHTML = `${TRANSLATIONS[lang].title} <span class="version-label"></span>${devBadge}`;
+    
+    // Dynamically change favicon color on DEV platform (emerald green -> gold yellow)
+    if (isDev) {
+        const faviconLink = document.querySelector('link[rel="icon"]');
+        if (faviconLink) {
+            faviconLink.href = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 4 L28 26 H4 Z' fill='none' stroke='%23eab308' stroke-width='2.5' stroke-linejoin='round'/%3E%3Cpath d='M8 20 C10 18 14 18 17 19 C20 20 22 18 24 16' fill='none' stroke='%23f97316' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E";
+        }
+    }
+
     document.querySelectorAll('.version-label').forEach(el => {
         el.textContent = `v${VERSION}`;
     });
@@ -71,6 +132,9 @@ function setLanguage(lang) {
         stepHeaders[3].textContent = TRANSLATIONS[lang].step4_title;
     }
     
+    const labelOutputFilename = document.getElementById('label-output-filename');
+    if (labelOutputFilename) labelOutputFilename.textContent = TRANSLATIONS[lang].output_filename_label;
+    
     const tabBtns = document.querySelectorAll('.tab-btn');
     if (tabBtns.length >= 2) {
         tabBtns[0].textContent = TRANSLATIONS[lang].tab_fetch;
@@ -80,19 +144,33 @@ function setLanguage(lang) {
     document.querySelector('label[for="race-url"]').textContent = TRANSLATIONS[lang].race_url_label;
     btnFetch.textContent = TRANSLATIONS[lang].fetch;
     document.querySelector('.input-helper').textContent = TRANSLATIONS[lang].fetch_helper;
-    document.querySelector('.drag-drop-zone p').innerHTML = `${TRANSLATIONS[lang].drag_drop} <span class="highlight">${TRANSLATIONS[lang].browse}</span>`;
+    const dropTextEl = document.querySelector('.drop-text') || document.querySelector('.drag-drop-zone p');
+    if (dropTextEl) {
+        dropTextEl.innerHTML = `${TRANSLATIONS[lang].drag_drop} <span class="highlight">${TRANSLATIONS[lang].browse}</span>`;
+    }
     document.querySelector('label[for="table-html-paste"]').textContent = TRANSLATIONS[lang].paste_label;
     tableHtmlPaste.placeholder = TRANSLATIONS[lang].paste_placeholder;
     btnParseHtml.textContent = TRANSLATIONS[lang].parse_btn;
     
     document.querySelector('.glass-card:nth-of-type(2) .card-header h2').textContent = TRANSLATIONS[lang].step2_title;
-    document.querySelector('label[for="char-limit"]').textContent = TRANSLATIONS[lang].char_limit_label;
+    
+    const charLimitLabel = document.querySelector('label[for="garmin-char-limit"]') || document.querySelector('label[for="char-limit"]');
+    if (charLimitLabel) {
+        charLimitLabel.textContent = TRANSLATIONS[lang].char_limit_label;
+    }
     settingCharLimit.options[0].textContent = TRANSLATIONS[lang].char_limit_10;
     settingCharLimit.options[1].textContent = TRANSLATIONS[lang].char_limit_15;
     settingCharLimit.options[2].textContent = TRANSLATIONS[lang].char_limit_inf;
     document.querySelector('label[for="snap-threshold"]').textContent = TRANSLATIONS[lang].snap_threshold_label;
-    document.querySelector('.settings-grid + .checkbox-group label').textContent = TRANSLATIONS[lang].shorten_names;
-    document.querySelector('.settings-grid + .checkbox-group + .checkbox-group label').textContent = TRANSLATIONS[lang].add_elev;
+    
+    const shortenNamesLabel = document.querySelector('label[for="shorten-names"]') || document.querySelector('.settings-grid + .checkbox-group label');
+    if (shortenNamesLabel) {
+        shortenNamesLabel.textContent = TRANSLATIONS[lang].shorten_names;
+    }
+    const addElevLabel = document.querySelector('label[for="add-elev-to-name"]') || document.querySelector('.settings-grid + .checkbox-group + .checkbox-group label');
+    if (addElevLabel) {
+        addElevLabel.textContent = TRANSLATIONS[lang].add_elev;
+    }
     
     document.querySelectorAll('.stat-label')[0].textContent = TRANSLATIONS[lang].stat_race;
     document.querySelectorAll('.stat-label')[1].textContent = TRANSLATIONS[lang].stat_dist;
@@ -111,7 +189,9 @@ function setLanguage(lang) {
         ths[0].textContent = TRANSLATIONS[lang].col_use;
         ths[1].textContent = TRANSLATIONS[lang].col_name;
         ths[2].textContent = state.unit === 'mi' ? 'Dist (mi)' : 'Dist (km)';
-        ths[3].textContent = TRANSLATIONS[lang].col_elev;
+        ths[3].textContent = state.unit === 'mi' 
+            ? (lang === 'fr' ? 'Alt (ft)' : 'Elev (ft)') 
+            : TRANSLATIONS[lang].col_elev;
         ths[4].textContent = TRANSLATIONS[lang].col_time;
         ths[5].textContent = TRANSLATIONS[lang].col_icon;
         ths[6].textContent = TRANSLATIONS[lang].col_del;
@@ -120,14 +200,20 @@ function setLanguage(lang) {
     renderPOITable();
     
     // About Section
-    document.querySelector('.modal-body h2').textContent = TRANSLATIONS[lang].about_title;
+    const aboutTitleEl = document.querySelector('#about-modal h2') || document.querySelector('.modal-body h2');
+    if (aboutTitleEl) {
+        aboutTitleEl.textContent = TRANSLATIONS[lang].about_title;
+    }
     const aboutParagraphs = document.querySelectorAll('.modal-body p');
     if (aboutParagraphs.length >= 3) {
         aboutParagraphs[0].innerHTML = TRANSLATIONS[lang].about_p1;
         aboutParagraphs[1].innerHTML = TRANSLATIONS[lang].about_p2;
         aboutParagraphs[2].innerHTML = TRANSLATIONS[lang].about_dev;
     }
-    document.querySelector('.modal-body h3').textContent = TRANSLATIONS[lang].about_features_title;
+    const aboutFeaturesTitleEl = document.querySelector('.modal-body h3');
+    if (aboutFeaturesTitleEl) {
+        aboutFeaturesTitleEl.textContent = TRANSLATIONS[lang].about_features_title;
+    }
     const aboutLis = document.querySelectorAll('.modal-body li');
     if (aboutLis.length >= 5) {
         aboutLis[0].innerHTML = TRANSLATIONS[lang].about_feat1;
@@ -136,15 +222,24 @@ function setLanguage(lang) {
         aboutLis[3].innerHTML = TRANSLATIONS[lang].about_feat4;
         aboutLis[4].innerHTML = TRANSLATIONS[lang].about_feat5;
     }
-    document.querySelector('.modal-body .disclaimer').innerHTML = TRANSLATIONS[lang].about_disclaimer;
+    const disclaimerEl = document.getElementById('about-disclaimer') || document.querySelector('.modal-body .disclaimer');
+    if (disclaimerEl) {
+        disclaimerEl.innerHTML = TRANSLATIONS[lang].about_disclaimer;
+    }
     
     // Success Modal
-    document.getElementById('lbl-success-title').textContent = TRANSLATIONS[lang].modal_success_title;
-    document.getElementById('lbl-success-dist').textContent = TRANSLATIONS[lang].modal_dist;
-    document.getElementById('lbl-success-elev').textContent = TRANSLATIONS[lang].modal_elev;
-    document.getElementById('lbl-success-start-loc').textContent = TRANSLATIONS[lang].modal_start_loc;
-    document.getElementById('lbl-success-start-date').textContent = TRANSLATIONS[lang].modal_start_date;
-    document.getElementById('btn-close-success-ok').textContent = TRANSLATIONS[lang].modal_got_it;
+    const lblSuccessTitle = document.getElementById('lbl-success-title');
+    if (lblSuccessTitle) lblSuccessTitle.textContent = TRANSLATIONS[lang].modal_success_title;
+    const lblSuccessDist = document.getElementById('lbl-success-dist');
+    if (lblSuccessDist) lblSuccessDist.textContent = TRANSLATIONS[lang].modal_dist;
+    const lblSuccessElev = document.getElementById('lbl-success-elev');
+    if (lblSuccessElev) lblSuccessElev.textContent = TRANSLATIONS[lang].modal_elev;
+    const lblSuccessStartLoc = document.getElementById('lbl-success-start-loc');
+    if (lblSuccessStartLoc) lblSuccessStartLoc.textContent = TRANSLATIONS[lang].modal_start_loc;
+    const lblSuccessStartDate = document.getElementById('lbl-success-start-date');
+    if (lblSuccessStartDate) lblSuccessStartDate.textContent = TRANSLATIONS[lang].modal_start_date;
+    const btnCloseSuccessOk = document.getElementById('btn-close-success-ok');
+    if (btnCloseSuccessOk) btnCloseSuccessOk.textContent = TRANSLATIONS[lang].modal_got_it;
     
     // Watch Import Guide Card
     const lblGuideTitle = document.getElementById('lbl-guide-title');
@@ -232,7 +327,7 @@ function renderPOITable() {
         garminLabel.style.opacity = '0.85';
         
         const updateGarminLabel = () => {
-            const garminName = generateGarminName(poi.name, poi.ele);
+            const garminName = generateGarminName(poi.name, poi.ele, state.unit);
             garminLabel.textContent = `Garmin: ${garminName}`;
         };
         updateGarminLabel();
@@ -268,9 +363,13 @@ function renderPOITable() {
         const inputEle = document.createElement('input');
         inputEle.type = 'number';
         inputEle.className = 'cell-input';
-        inputEle.value = poi.ele || 0;
+        
+        const displayEle = state.unit === 'mi' ? Math.round((poi.ele || 0) * 3.28084) : (poi.ele || 0);
+        inputEle.value = displayEle;
+        
         inputEle.addEventListener('change', () => {
-            poi.ele = parseInt(inputEle.value) || 0;
+            const parsedVal = parseInt(inputEle.value) || 0;
+            poi.ele = state.unit === 'mi' ? Math.round(parsedVal / 3.28084) : parsedVal;
             saveStateToLocalStorage();
             updateGarminLabel();
             drawElevationProfile();
@@ -311,9 +410,8 @@ function renderPOITable() {
         const selectIcon = document.createElement('select');
         selectIcon.className = 'cell-input';
         selectIcon.style.flexGrow = '1';
-        selectIcon.style.borderWidth = '2px';
-        selectIcon.style.borderStyle = 'solid';
-        selectIcon.style.borderRadius = '6px';
+        selectIcon.style.border = 'none';
+        selectIcon.style.borderRadius = '20px';
         selectIcon.style.height = '32px';
         selectIcon.style.fontSize = '0.8rem';
         
@@ -333,8 +431,6 @@ function renderPOITable() {
         });
         
         const updateSelectStyle = () => {
-            const symColor = getSymbolColor(selectIcon.value);
-            selectIcon.style.borderColor = symColor;
             miniIconSpan.innerHTML = getMiniIconSvg(selectIcon.value);
             const svgEl = miniIconSpan.querySelector('span');
             if (svgEl) svgEl.style.marginRight = '0';
@@ -352,6 +448,7 @@ function renderPOITable() {
         
         iconWrapper.appendChild(miniIconSpan);
         iconWrapper.appendChild(selectIcon);
+        setupCustomDropdown(selectIcon);
         tdIcon.appendChild(iconWrapper);
         tr.appendChild(tdIcon);
         
@@ -385,58 +482,42 @@ function updateStats() {
     } else {
         statDistance.textContent = `-- ${state.unit}`;
     }
-    statGain.textContent = state.totalGain ? `${state.totalGain} m D+` : '-- m D+';
+    if (state.totalGain) {
+        const displayGain = state.unit === 'mi' ? Math.round(state.totalGain * 3.28084) : state.totalGain;
+        const unitLabel = state.unit === 'mi' ? 'ft' : 'm';
+        statGain.textContent = `${displayGain} ${unitLabel} D+`;
+    } else {
+        statGain.textContent = `-- ${state.unit === 'mi' ? 'ft' : 'm'} D+`;
+    }
     statGpxPoints.textContent = state.gpxTrackPoints.length;
     updateDifficultyTheme();
     updateRaceInfoCard();
+    updateOutputFilenameField();
+}
+
+function updateOutputFilenameField() {
+    const inputFilename = document.getElementById('input-output-filename');
+    if (inputFilename) {
+        if (state.raceName) {
+            const base = state.raceName.toLowerCase().replace(/[^a-z0-9_\-]/g, '_');
+            inputFilename.value = `${base}_with_checkpoints`;
+        } else {
+            inputFilename.value = 'route_with_checkpoints';
+        }
+    }
 }
 
 function updateDifficultyTheme() {
-    const dist = state.totalDistance;
-    const isTDS = state.raceName && state.raceName.toUpperCase().includes('TDS');
-    const cat = state.raceCategory ? state.raceCategory.toUpperCase().replace('WS', '').replace('KM', 'K') : '';
-    const kmEffort = dist + (state.totalGain / 100);
+    const theme = getRaceTheme(state.raceName, state.raceCategory, state.totalDistance, state.totalGain);
     
-    document.body.classList.remove('difficulty-20k', 'difficulty-50k', 'difficulty-100k', 'difficulty-100m', 'difficulty-tds');
-    
-    let trackColor = '#7ddf65';
-    
-    if (isTDS) {
-        document.body.classList.add('difficulty-tds');
-        trackColor = '#00ade9';
-    } else if (cat.includes('100M')) {
-        document.body.classList.add('difficulty-100m');
-        trackColor = '#ef4444';
-    } else if (cat.includes('100K')) {
-        document.body.classList.add('difficulty-100k');
-        trackColor = '#7ddf65';
-    } else if (cat.includes('50K')) {
-        document.body.classList.add('difficulty-50k');
-        trackColor = '#ff9600';
-    } else if (cat.includes('20K')) {
-        document.body.classList.add('difficulty-20k');
-        trackColor = '#ffff00';
-    } else if (dist > 0) {
-        if (kmEffort < 35) {
-            document.body.classList.add('difficulty-20k');
-            trackColor = '#ffff00';
-        } else if (kmEffort < 80) {
-            document.body.classList.add('difficulty-50k');
-            trackColor = '#ff9600';
-        } else if (kmEffort < 140) {
-            document.body.classList.add('difficulty-100k');
-            trackColor = '#7ddf65';
-        } else {
-            document.body.classList.add('difficulty-100m');
-            trackColor = '#ef4444';
+    Array.from(document.body.classList).forEach(cls => {
+        if (cls.startsWith('difficulty-')) {
+            document.body.classList.remove(cls);
         }
-    } else {
-        document.body.classList.add('difficulty-100k');
-    }
+    });
+    document.body.classList.add(theme.className);
     
-    if (trackLayer && typeof trackLayer.setStyle === 'function') {
-        trackLayer.setStyle({ color: trackColor });
-    }
+    updateTrackColor(theme.color);
 }
 
 function updateRaceInfoCard() {
@@ -550,6 +631,7 @@ function loadStateFromLocalStorage() {
         state.raceStartDate = data.raceStartDate || null;
         state.raceDirectEntry = data.raceDirectEntry || null;
         state.unit = data.unit || localStorage.getItem('preferred-unit') || 'km';
+        state.mapMode = data.mapMode || 'sync';
         
         if (data.originalGPXXml) {
             const parser = new DOMParser();
@@ -659,9 +741,16 @@ function handleGpxFile(file) {
         
         // Try to read race name from metadata
         const nameEl = xmlDoc.getElementsByTagName('name')[0];
-        if (nameEl && nameEl.textContent) {
-            state.raceName = nameEl.textContent.trim();
-        } else {
+        const gpxName = nameEl && nameEl.textContent ? nameEl.textContent.trim() : '';
+        const isGenericName = (name) => {
+            if (!name) return true;
+            const n = name.toLowerCase();
+            return n.includes('track') || n.includes('route') || n.includes('gpx') || n.endsWith('.json') || n.endsWith('.gpx');
+        };
+        
+        if (gpxName && !isGenericName(gpxName)) {
+            state.raceName = gpxName;
+        } else if (!state.raceName || isGenericName(state.raceName)) {
             state.raceName = file.name.replace(/\.[^/.]+$/, "");
         }
         
@@ -869,6 +958,16 @@ async function triggerMergeDownload(format) {
         return;
     }
     
+    trackEvent('export_pressed', {
+        format: format,
+        race_name: state.raceName,
+        checkpoint_count: state.checkpoints.length,
+        character_limit: settingCharLimit ? settingCharLimit.value : 15,
+        add_elevation: settingAddElevToName ? settingAddElevToName.checked : false,
+        shorten_names: settingShortenNames ? settingShortenNames.checked : true,
+        unit: state.unit || 'km'
+    });
+    
     let gpxBlob;
     const serializer = new XMLSerializer();
     const gpxString = serializer.serializeToString(state.originalGPXXml);
@@ -891,9 +990,10 @@ async function triggerMergeDownload(format) {
     const shortenVal = settingShortenNames ? settingShortenNames.checked : true;
     
     formData.append('char_limit', limit);
-    formData.append('add_elevation', addElev);
+    formData.append('add_elev', addElev);
     formData.append('shorten_names', shortenVal);
     formData.append('format', format);
+    formData.append('unit', state.unit || 'km');
     
     try {
         const response = await fetch('/trail-mapper/api/merge', {
@@ -905,15 +1005,45 @@ async function triggerMergeDownload(format) {
             throw new Error('Merge request failed on backend');
         }
         
-        // Download the file
-        const blob = await response.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
+        // Parse the JSON response instead of reading as raw blob
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to process GPX merge on server.');
+        }
+
+        // Get the specific format content
+        let fileContent = '';
+        let mimeType = 'application/gpx+xml';
+        const ext = format === 'tcx' ? 'tcx' : 'gpx';
+
+        if (format === 'tcx') {
+            fileContent = result.garmin_tcx;
+            mimeType = 'application/tcx+xml';
+        } else if (format === 'gpx_garmin') {
+            fileContent = result.garmin_gpx;
+        } else {
+            // suunto or coros
+            fileContent = result.suunto_gpx;
+        }
+
+        if (!fileContent) {
+            throw new Error(`Server returned empty content for format ${format}`);
+        }
+
+        const fileBlob = new Blob([fileContent], { type: mimeType });
+        const downloadUrl = window.URL.createObjectURL(fileBlob);
+        
         const a = document.createElement('a');
         a.href = downloadUrl;
         
-        const ext = format === 'tcx' ? 'tcx' : 'gpx';
-        const cleanName = state.raceName.toLowerCase().replace(/[^a-z0-9]/g, '_');
-        a.download = `${cleanName}_with_checkpoints.${ext}`;
+        const inputFilename = document.getElementById('input-output-filename');
+        let outputName = inputFilename && inputFilename.value.trim() ? inputFilename.value.trim() : '';
+        if (!outputName) {
+            const base = state.raceName ? state.raceName.toLowerCase().replace(/[^a-z0-9_\-]/g, '_') : 'route';
+            outputName = `${base}_with_checkpoints`;
+        }
+        outputName = outputName.replace(/[^a-zA-Z0-9_\-]/g, '_');
+        a.download = `${outputName}.${ext}`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -976,6 +1106,13 @@ btnParseHtml.addEventListener('click', () => {
         saveStateToLocalStorage();
     } else {
         alert(TRANSLATIONS[state.locale].alert_parse_fail);
+    }
+});
+
+raceUrlInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        btnFetch.click();
     }
 });
 
@@ -1201,7 +1338,7 @@ function switchTab(tabId) {
     });
 }
 
-document.querySelectorAll('.tab-btn').forEach(btn => {
+document.querySelectorAll('.tab-container:not(.guide-tab-container) .tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const tabId = btn.id.replace('-btn', '');
         switchTab(tabId);
@@ -1292,12 +1429,52 @@ function applyTheme(theme) {
     } catch (e) {}
     
     drawElevationProfile();
+    updateMapTheme();
+}
+
+function updateMapTheme() {
+    const mapEl = document.getElementById('map');
+    const btnMapTheme = document.getElementById('btn-map-theme');
+    if (!mapEl) return;
+
+    const mode = state.mapMode || 'sync';
+    let isDark = false;
+
+    if (mode === 'dark') {
+        isDark = true;
+    } else if (mode === 'light') {
+        isDark = false;
+    } else {
+        isDark = document.body.classList.contains('dark-theme');
+    }
+
+    if (isDark) {
+        mapEl.classList.add('map-dark-theme');
+    } else {
+        mapEl.classList.remove('map-dark-theme');
+    }
+
+    if (btnMapTheme) {
+        let iconHtml = '';
+        if (mode === 'sync') {
+            btnMapTheme.title = state.locale === 'fr' ? 'Thème de la carte : Synchronisé' : 'Map theme: Synced';
+            iconHtml = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+        } else if (mode === 'light') {
+            btnMapTheme.title = state.locale === 'fr' ? 'Thème de la carte : Clair' : 'Map theme: Light';
+            iconHtml = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="4.22" x2="19.78" y2="5.64"/></svg>`;
+        } else {
+            btnMapTheme.title = state.locale === 'fr' ? 'Thème de la carte : Sombre' : 'Map theme: Dark';
+            iconHtml = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
+        }
+        btnMapTheme.innerHTML = iconHtml;
+    }
 }
 
 themeBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         const theme = btn.getAttribute('data-theme');
         applyTheme(theme);
+        trackEvent('theme_changed', { theme: theme });
     });
 });
 
@@ -1312,15 +1489,15 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
 export function applyUnit(unit) {
     state.unit = unit;
     
-    const btnUnitToggle = document.getElementById('btn-unit-toggle');
-    if (btnUnitToggle) {
-        btnUnitToggle.textContent = unit.toUpperCase();
+    const spanKm = document.getElementById('unit-km');
+    const spanMi = document.getElementById('unit-mi');
+    if (spanKm && spanMi) {
         if (unit === 'mi') {
-            btnUnitToggle.classList.add('btn-primary');
-            btnUnitToggle.classList.remove('btn-secondary');
+            spanMi.classList.add('active');
+            spanKm.classList.remove('active');
         } else {
-            btnUnitToggle.classList.add('btn-secondary');
-            btnUnitToggle.classList.remove('btn-primary');
+            spanKm.classList.add('active');
+            spanMi.classList.remove('active');
         }
     }
     
@@ -1391,13 +1568,130 @@ function showSuccessModal(title, msg, stats) {
     
     document.getElementById('success-course-name').textContent = title || 'Custom Trail Race';
     document.getElementById('success-message').textContent = msg || 'Successfully loaded checkpoints and GPX data!';
-    
     document.getElementById('success-meta-dist').textContent = stats.dist || '--';
     document.getElementById('success-meta-elev').textContent = stats.elev || '--';
     document.getElementById('success-meta-start-loc').textContent = stats.startLoc || '--';
     document.getElementById('success-meta-start-date').textContent = stats.startDate || '--';
     
     modal.style.display = 'flex';
+
+    trackEvent('race_loaded', {
+        race_name: title,
+        distance: stats.dist,
+        elevation: stats.elev,
+        checkpoint_count: state.checkpoints.length,
+        unit: state.unit || 'km'
+    });
+}
+
+// Custom Dropdown UI helper function
+function setupCustomDropdown(selectEl) {
+    if (!selectEl || selectEl.style.display === 'none' || selectEl.nextElementSibling?.classList.contains('custom-dropdown')) {
+        return;
+    }
+
+    // Hide original select
+    selectEl.style.display = 'none';
+
+    // Create wrapper
+    const wrapper = document.createElement('div');
+    wrapper.className = 'custom-dropdown';
+    if (selectEl.id) {
+        wrapper.id = 'custom-dropdown-' + selectEl.id;
+    }
+    if (selectEl.style.flexGrow) {
+        wrapper.style.flexGrow = selectEl.style.flexGrow;
+    }
+
+    // Create trigger
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'custom-dropdown-trigger';
+
+    const selectedSpan = document.createElement('span');
+    selectedSpan.textContent = selectEl.options[selectEl.selectedIndex]?.text || '';
+    trigger.appendChild(selectedSpan);
+
+    const chevron = document.createElement('svg');
+    chevron.setAttribute('class', 'dropdown-chevron');
+    chevron.setAttribute('viewBox', '0 0 24 24');
+    chevron.setAttribute('width', '12');
+    chevron.setAttribute('height', '12');
+    chevron.setAttribute('stroke', 'currentColor');
+    chevron.setAttribute('stroke-width', '3');
+    chevron.setAttribute('fill', 'none');
+    chevron.innerHTML = '<polyline points="6 9 12 15 18 9"/>';
+    trigger.appendChild(chevron);
+
+    wrapper.appendChild(trigger);
+
+    // Create list container
+    const listContainer = document.createElement('div');
+    listContainer.className = 'custom-dropdown-list';
+
+    // Populate options
+    const updateOptionsList = () => {
+        listContainer.innerHTML = '';
+        Array.from(selectEl.options).forEach((opt, idx) => {
+            const optionDiv = document.createElement('div');
+            optionDiv.className = 'custom-dropdown-option';
+            if (idx === selectEl.selectedIndex) {
+                optionDiv.classList.add('selected');
+            }
+            optionDiv.textContent = opt.text;
+            optionDiv.dataset.value = opt.value;
+
+            optionDiv.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectEl.selectedIndex = idx;
+                selectedSpan.textContent = opt.text;
+                
+                // Dispatch change event to the original select
+                selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+                
+                // Close dropdown
+                wrapper.classList.remove('active');
+            });
+
+            listContainer.appendChild(optionDiv);
+        });
+    };
+
+    updateOptionsList();
+    wrapper.appendChild(listContainer);
+
+    // Insert wrapper in DOM after original select
+    selectEl.parentNode.insertBefore(wrapper, selectEl.nextSibling);
+
+    // Toggle dropdown visibility on trigger click
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        
+        // Close other custom dropdowns
+        document.querySelectorAll('.custom-dropdown').forEach(other => {
+            if (other !== wrapper) {
+                other.classList.remove('active');
+            }
+        });
+        
+        // Update items selection class before opening
+        updateOptionsList();
+        
+        wrapper.classList.toggle('active');
+    });
+
+    // Handle updates when select value is modified programmatically
+    const observer = new MutationObserver(() => {
+        selectedSpan.textContent = selectEl.options[selectEl.selectedIndex]?.text || '';
+        updateOptionsList();
+    });
+    observer.observe(selectEl, { childList: true, attributes: true, subtree: true });
+
+    // Also listen to change event to update value text
+    selectEl.addEventListener('change', () => {
+        selectedSpan.textContent = selectEl.options[selectEl.selectedIndex]?.text || '';
+        updateOptionsList();
+    });
 }
 
 // DOM Content Loaded orchestrations
@@ -1415,6 +1709,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 3. Load active state / local persistence
     loadStateFromLocalStorage();
+    updateMapTheme();
     
     // Set active unit switcher state
     applyUnit(state.unit || 'km');
@@ -1427,17 +1722,46 @@ document.addEventListener('DOMContentLoaded', () => {
             applyUnit(nextUnit);
         });
     }
+
+    // Setup map theme toggle button click handler
+    const btnMapTheme = document.getElementById('btn-map-theme');
+    if (btnMapTheme) {
+        btnMapTheme.addEventListener('click', () => {
+            const current = state.mapMode || 'sync';
+            let next = 'sync';
+            if (current === 'sync') {
+                next = 'light';
+            } else if (current === 'light') {
+                next = 'dark';
+            } else {
+                next = 'sync';
+            }
+            state.mapMode = next;
+            updateMapTheme();
+            saveStateToLocalStorage();
+            trackEvent('map_theme_changed', { mode: next });
+        });
+    }
     
     // 4. Register elevation chart hover triggers
     initElevationChartListeners();
     
-    // 5. Setup map fullscreen button click handler
+    // 5. Setup map fullscreen button click handler with ESC minimize listener
     const btnMapFullscreen = document.getElementById('btn-map-fullscreen');
     if (btnMapFullscreen) {
-        btnMapFullscreen.addEventListener('click', () => {
+        const toggleFullscreen = (forceCollapse = false) => {
             const mapCard = document.querySelector('.map-card');
             if (!mapCard) return;
-            const isFullscreen = mapCard.classList.toggle('fullscreen-active');
+            
+            let isFullscreen;
+            if (forceCollapse) {
+                if (!mapCard.classList.contains('fullscreen-active')) return;
+                mapCard.classList.remove('fullscreen-active');
+                isFullscreen = false;
+            } else {
+                isFullscreen = mapCard.classList.toggle('fullscreen-active');
+            }
+            
             if (isFullscreen) {
                 btnMapFullscreen.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.5" fill="none"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M10 14l-7 7"/></svg>`;
             } else {
@@ -1446,6 +1770,41 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => {
                 invalidateMapSize();
             }, 300);
+        };
+
+        btnMapFullscreen.addEventListener('click', () => toggleFullscreen());
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                toggleFullscreen(true);
+            }
         });
     }
+
+    // Register double-click listener on title branding for hidden telemetry opt-out
+    const brandingH1 = document.querySelector('.branding h1');
+    if (brandingH1) {
+        brandingH1.addEventListener('dblclick', () => {
+            const current = localStorage.getItem('telemetry-opt-out') === 'true';
+            localStorage.setItem('telemetry-opt-out', (!current).toString());
+            console.log(`Telemetry opt-out toggled: ${!current}`);
+            alert(`Telemetry logging is now ${!current ? 'DISABLED (opted out)' : 'ENABLED'}.`);
+        });
+    }
+
+    // 6. Convert static select elements to custom dropdowns
+    document.querySelectorAll('select').forEach(setupCustomDropdown);
+
+    // 7. Close custom dropdowns on document click
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.custom-dropdown').forEach(dropdown => {
+            dropdown.classList.remove('active');
+        });
+    });
+
+    // Trigger session_start telemetry
+    trackEvent('session_start', {
+        userAgent: navigator.userAgent,
+        screenSize: `${window.innerWidth}x${window.innerHeight}`
+    });
 });
