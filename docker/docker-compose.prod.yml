@@ -9,7 +9,7 @@ services:
       - eole_shared_network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.eoleme-trail-mapper.rule=(Host(`eole.me`) || Host(`www.eole.me`)) && PathPrefix(`/trail-mapper`)"
+      - "traefik.http.routers.eoleme-trail-mapper.rule=Host(`gpx.eole.me`) || ((Host(`eole.me`) || Host(`www.eole.me`)) && PathPrefix(`/trail-mapper`))"
       - "traefik.http.routers.eoleme-trail-mapper.entrypoints=websecure"
       - "traefik.http.routers.eoleme-trail-mapper.tls=true"
       - "traefik.http.routers.eoleme-trail-mapper.tls.certresolver=letsencrypt"

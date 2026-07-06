@@ -25,12 +25,14 @@ class DownloadGpxRequest(BaseModel):
 class ParseUrlRequest(BaseModel):
     url: str
 
-@app.get("/")
-def read_root():
-    # Redirect base root to the subpath /trail-mapper/ to match orchestration
-    return RedirectResponse(url="/trail-mapper/")
+# Static files are mounted at root `/` at the end of the file, which automatically handles serving index.html on GET `/`
 
-@app.post("/trail-mapper/api/download-gpx")
+@app.get("/trail-mapper")
+@app.get("/trail-mapper/{path:path}")
+def redirect_old_trail_mapper_paths():
+    return RedirectResponse(url="https://gpx.eole.me/", status_code=301)
+
+@app.post("/api/download-gpx")
 def download_gpx(payload: DownloadGpxRequest):
     url = payload.url
     if not is_safe_url(url):
@@ -93,7 +95,7 @@ def download_gpx(payload: DownloadGpxRequest):
             raise e
         raise HTTPException(status_code=500, detail=f"Failed to download GPX file: {str(e)}")
 
-@app.post("/trail-mapper/api/parse-url")
+@app.post("/api/parse-url")
 def parse_url(payload: ParseUrlRequest):
     url = payload.url
     if not is_safe_url(url):
@@ -319,7 +321,7 @@ def parse_url(payload: ParseUrlRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse URL: {str(e)}")
 
-@app.post("/trail-mapper/api/merge")
+@app.post("/api/merge")
 async def merge_data(
     gpx_file: UploadFile = File(...),
     stations_json: str = Form(...),
@@ -410,7 +412,7 @@ class TelemetryRequest(BaseModel):
     theme: str
     payload: dict
 
-@app.post("/trail-mapper/api/telemetry")
+@app.post("/api/telemetry")
 async def receive_telemetry(data: TelemetryRequest):
     """
     Forwards event telemetry payloads to the configured n8n webhook URL.
@@ -450,4 +452,4 @@ class CacheControlledStaticFiles(StaticFiles):
         response.headers["Cache-Control"] = self.cache_control
         return response
 
-app.mount("/trail-mapper", CacheControlledStaticFiles(directory="public", html=True), name="public")
+app.mount("/", CacheControlledStaticFiles(directory="public", html=True), name="public")

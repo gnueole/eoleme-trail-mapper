@@ -424,8 +424,8 @@
                     <strong>Avertissement :</strong> Ce projet est bénévole, open-source et indépendant. Il n'est pas affilié à UTMB Group, UTMB World ou toute autre organisation de course.
                 </div>
 
-                <p><strong>Trail Mapper & POI Merger</strong> est un utilitaire conçu pour les traileurs et passionnés de course de montagne qui naviguent avec des montres GPS Garmin, Suunto ou Coros.</p>
-                <p>Lors de la préparation d'une course, les organisateurs publient séparément les fichiers GPX et les horaires des ravitaillements. Cet outil résout le problème en recalant automatiquement les points de ravitaillement directement sur la trace GPX.</p>
+                <p id="help-p1"><strong>Trail Mapper & POI Merger</strong> est un utilitaire conçu pour les traileurs et passionnés de course de montagne qui naviguent avec des montres GPS Garmin, Suunto ou Coros.</p>
+                <p id="help-p2">Lors de la préparation d'une course, les organisateurs publient séparément les fichiers GPX et les horaires des ravitaillements. Cet outil résout le problème en recalant automatiquement les points de ravitaillement directement sur la trace GPX.</p>
                 
                 <div class="garmin-watch-wrapper">
                     <div class="garmin-watch-screen">
@@ -434,7 +434,7 @@
                 </div>
                 
                 <h3>Caractéristiques principales :</h3>
-                <ul>
+                <ul id="help-features-list">
                     <li><strong>Récupération directe :</strong> Collez l'URL d'une course (TDS, UTMB, CCC, Templiers, etc.) pour importer automatiquement le tracé GPX officiel et les ravitaillements.</li>
                     <li><strong>Projection automatique :</strong> Les points de passage sont mathématiquement recalés sur la coordonnée la plus proche du fichier GPX.</li>
                     <li><strong>Compatibilité Garmin :</strong> Raccourcissement automatique des noms (ex. <em>Ravitaillement</em> &rarr; <em>RAV</em>), ajout de l'altitude au nom et troncature pour respecter les limites des montres.</li>
@@ -442,7 +442,26 @@
                     <li><strong>Persistance locale :</strong> Sauvegarde automatiquement votre parcours actif et vos réglages dans votre navigateur (localStorage).</li>
                 </ul>
                 
-                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 1.5rem; text-align: center; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                <h3 id="help-compat-title">Montres Garmin Compatibles (Up Ahead)</h3>
+                <p id="help-compat-desc">Les familles de montres suivantes prennent en charge la fonction <strong>Up Ahead</strong> (Sur mon chemin) de Garmin. Seul le modèle le plus ancien de chaque famille est listé ci-dessous :</p>
+                <ul id="help-compat-list" style="columns: 2; -webkit-columns: 2; -moz-columns: 2; margin-bottom: 1.25rem;">
+                    <li>D2™ Mach 1</li>
+                    <li>Descent™ Mk3</li>
+                    <li>Enduro™ 2</li>
+                    <li>epix™ (Gen 2)</li>
+                    <li>fēnix® 7 / 7S / 7X</li>
+                    <li>Forerunner® 955</li>
+                    <li>MARQ® (Gen 2)</li>
+                    <li>quatix® 7</li>
+                    <li>tactix® 7</li>
+                    <li>Venu® X1</li>
+                </ul>
+                <p id="help-compat-link-container" style="font-size: 0.85rem; margin-bottom: 1.25rem; color: var(--text-muted);">
+                    Consultez la page d'assistance officielle de Garmin pour plus de détails : 
+                    <a id="help-compat-link" href="https://support.garmin.com/fr-FR/?faq=lQMibRoY2I5Y4pP8EXgxv7" target="_blank" style="color: var(--accent-color); text-decoration: underline;">Support Garmin</a>
+                </p>
+                
+                <p id="help-dev-footer" style="font-size: 0.8rem; color: var(--text-muted); margin-top: 1.5rem; text-align: center; border-top: 1px solid var(--border-color); padding-top: 1rem;">
                     Développé comme utilitaire pour l'écosystème Eole.me. | <a href="https://github.com/gnueole/eoleme-trail-mapper" target="_blank" style="color: var(--accent-color); text-decoration: underline;">Dépôt GitHub</a>
                 </p>
             </div>

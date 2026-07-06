@@ -17,20 +17,29 @@ def test_is_safe_url():
     assert is_safe_url("https://montblanc.utmb.world") is True
     assert is_safe_url("https://google.com") is True
 
-def test_root_redirect():
+def test_root_serves_html():
     response = client.get("/", follow_redirects=False)
-    assert response.status_code == 307
-    assert response.headers["location"] == "/trail-mapper/"
+    assert response.status_code == 200
+    assert "html" in response.headers["content-type"]
+
+def test_old_trail_mapper_path_redirects():
+    response = client.get("/trail-mapper", follow_redirects=False)
+    assert response.status_code == 301
+    assert response.headers["location"] == "https://gpx.eole.me/"
+
+    response2 = client.get("/trail-mapper/some-subpath/sub", follow_redirects=False)
+    assert response2.status_code == 301
+    assert response2.headers["location"] == "https://gpx.eole.me/"
 
 def test_download_gpx_ssrf_protection():
     # Test that downloading from localhost is blocked
-    response = client.post("/trail-mapper/api/download-gpx", json={"url": "http://127.0.0.1/route.gpx"})
+    response = client.post("/api/download-gpx", json={"url": "http://127.0.0.1/route.gpx"})
     assert response.status_code == 400
     assert "SSRF Protection" in response.json()["detail"]
 
 def test_parse_url_ssrf_protection():
     # Test that parsing localhost URL is blocked
-    response = client.post("/trail-mapper/api/parse-url", json={"url": "http://localhost/table"})
+    response = client.post("/api/parse-url", json={"url": "http://localhost/table"})
     assert response.status_code == 400
     assert "SSRF Protection" in response.json()["detail"]
 
@@ -67,7 +76,7 @@ def test_merge_endpoint():
     }
     
     response = client.post(
-        "/trail-mapper/api/merge",
+        "/api/merge",
         files=file_payload,
         data=data_payload
     )

@@ -76,7 +76,7 @@ export function trackEvent(eventType, payload = {}) {
         } catch (e) {}
     }
 
-    fetch('/trail-mapper/api/telemetry', {
+    fetch('/api/telemetry', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -204,17 +204,18 @@ function setLanguage(lang) {
     if (aboutTitleEl) {
         aboutTitleEl.textContent = TRANSLATIONS[lang].about_title;
     }
-    const aboutParagraphs = document.querySelectorAll('.modal-body p');
-    if (aboutParagraphs.length >= 3) {
-        aboutParagraphs[0].innerHTML = TRANSLATIONS[lang].about_p1;
-        aboutParagraphs[1].innerHTML = TRANSLATIONS[lang].about_p2;
-        aboutParagraphs[2].innerHTML = TRANSLATIONS[lang].about_dev;
-    }
+    const helpP1 = document.getElementById('help-p1');
+    if (helpP1) helpP1.innerHTML = TRANSLATIONS[lang].about_p1;
+    const helpP2 = document.getElementById('help-p2');
+    if (helpP2) helpP2.innerHTML = TRANSLATIONS[lang].about_p2;
+    const helpDevFooter = document.getElementById('help-dev-footer');
+    if (helpDevFooter) helpDevFooter.innerHTML = TRANSLATIONS[lang].about_dev;
+
     const aboutFeaturesTitleEl = document.querySelector('.modal-body h3');
     if (aboutFeaturesTitleEl) {
         aboutFeaturesTitleEl.textContent = TRANSLATIONS[lang].about_features_title;
     }
-    const aboutLis = document.querySelectorAll('.modal-body li');
+    const aboutLis = document.querySelectorAll('#help-features-list li');
     if (aboutLis.length >= 5) {
         aboutLis[0].innerHTML = TRANSLATIONS[lang].about_feat1;
         aboutLis[1].innerHTML = TRANSLATIONS[lang].about_feat2;
@@ -225,6 +226,16 @@ function setLanguage(lang) {
     const disclaimerEl = document.getElementById('help-disclaimer') || document.querySelector('.modal-body .disclaimer');
     if (disclaimerEl) {
         disclaimerEl.innerHTML = TRANSLATIONS[lang].about_disclaimer;
+    }
+
+    // Garmin Compatibility in Help Section
+    const compatTitleEl = document.getElementById('help-compat-title');
+    if (compatTitleEl) compatTitleEl.textContent = TRANSLATIONS[lang].about_compat_title;
+    const compatDescEl = document.getElementById('help-compat-desc');
+    if (compatDescEl) compatDescEl.innerHTML = TRANSLATIONS[lang].about_compat_desc;
+    const compatLinkContainer = document.getElementById('help-compat-link-container');
+    if (compatLinkContainer) {
+        compatLinkContainer.innerHTML = `${TRANSLATIONS[lang].about_compat_link} <a id="help-compat-link" href="${TRANSLATIONS[lang].about_compat_link_url}" target="_blank" style="color: var(--accent-color); text-decoration: underline;">${lang === 'fr' ? 'Support Garmin' : 'Garmin Support'}</a>`;
     }
     
     // Success Modal
@@ -996,7 +1007,7 @@ async function triggerMergeDownload(format) {
     formData.append('unit', state.unit || 'km');
     
     try {
-        const response = await fetch('/trail-mapper/api/merge', {
+        const response = await fetch('/api/merge', {
             method: 'POST',
             body: formData
         });
@@ -1127,7 +1138,7 @@ btnFetch.addEventListener('click', async () => {
     fetchStatusText.textContent = TRANSLATIONS[state.locale].status_connecting;
     
     try {
-        const response = await fetch('/trail-mapper/api/parse-url', {
+        const response = await fetch('/api/parse-url', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: url })
@@ -1171,7 +1182,7 @@ btnFetch.addEventListener('click', async () => {
         
         if (gpxUrl) {
             fetchStatusText.textContent = TRANSLATIONS[state.locale].status_downloading;
-            const downloadResponse = await fetch('/trail-mapper/api/download-gpx', {
+            const downloadResponse = await fetch('/api/download-gpx', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url: gpxUrl })

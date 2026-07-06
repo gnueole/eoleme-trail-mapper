@@ -3,7 +3,7 @@
 [![CI Status](https://github.com/gnueole/eoleme-trail-mapper/actions/workflows/ci.yml/badge.svg)](https://github.com/gnueole/eoleme-trail-mapper/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Live Production Link**: [https://eole.me/trail-mapper/](https://eole.me/trail-mapper/)
+**Live Production Link**: [https://gpx.eole.me/](https://gpx.eole.me/)
 
 Author: [Eole](https://eole.me) <[EMAIL_ADDRESS]>
 
