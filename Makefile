@@ -7,11 +7,8 @@
 # License     : MIT
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Load environment variables from local .env file if it exists
-ifneq (,$(wildcard .env))
-    include .env
-    export
-endif
+# Environment variables from .env are loaded by Docker Compose or other subprocesses directly.
+# We do not use GNU Make's "include .env" here because it fails when values contain colons (e.g. JSON strings).
 
 # 🎨 COLOR CODES (ANSI ESCAPE SEQUENCES)
 COLOR_RESET   := \033[0m

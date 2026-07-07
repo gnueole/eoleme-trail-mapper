@@ -639,6 +639,9 @@ function loadStateFromLocalStorage() {
         state.raceRunningStones = data.raceRunningStones || null;
         state.raceLogoUrl = data.raceLogoUrl || null;
         state.raceOfficialUrl = data.raceUrl || null;
+        if (state.raceOfficialUrl && raceUrlInput) {
+            raceUrlInput.value = state.raceOfficialUrl;
+        }
         state.raceStartDate = data.raceStartDate || null;
         state.raceDirectEntry = data.raceDirectEntry || null;
         state.unit = data.unit || localStorage.getItem('preferred-unit') || 'km';
@@ -1160,6 +1163,15 @@ btnFetch.addEventListener('click', async () => {
         state.raceOfficialUrl = url;
         state.raceStartDate = metadata.start_date || null;
         state.raceDirectEntry = metadata.direct_entry || null;
+
+        // Update URL query parameter in browser address bar
+        try {
+            const urlObj = new URL(window.location.href);
+            urlObj.searchParams.set('url', url);
+            window.history.replaceState({}, '', urlObj.toString());
+        } catch (e) {
+            console.error('Failed to update URL query parameter', e);
+        }
         
         if (scrapedStations.length > 0) {
             state.checkpoints = scrapedStations.map((s, idx) => ({
@@ -1309,6 +1321,25 @@ btnClearState.addEventListener('click', () => {
     state.raceOfficialUrl = null;
     state.raceStartDate = null;
     state.raceDirectEntry = null;
+    
+    if (raceUrlInput) {
+        raceUrlInput.value = '';
+    }
+    
+    try {
+        const urlObj = new URL(window.location.href);
+        urlObj.searchParams.delete('url');
+        urlObj.searchParams.delete('race-url');
+        urlObj.searchParams.delete('raceUrl');
+        // Clean trailing ? or ?& if any
+        let cleanUrl = urlObj.toString();
+        if (cleanUrl.endsWith('?')) {
+            cleanUrl = cleanUrl.slice(0, -1);
+        }
+        window.history.replaceState({}, '', cleanUrl);
+    } catch (e) {
+        console.error('Failed to clear URL query parameter', e);
+    }
     
     if (dragDropFileName) {
         dragDropFileName.style.display = 'none';
@@ -1721,6 +1752,30 @@ document.addEventListener('DOMContentLoaded', () => {
     // 3. Load active state / local persistence
     loadStateFromLocalStorage();
     updateMapTheme();
+
+    // 3.5. Parse URL query parameters to pre-fill and auto-fetch
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryUrl = urlParams.get('url') || urlParams.get('race-url') || urlParams.get('raceUrl');
+        if (queryUrl) {
+            const decodedUrl = decodeURIComponent(queryUrl).trim();
+            if (decodedUrl && raceUrlInput) {
+                raceUrlInput.value = decodedUrl;
+                switchTab('url-tab');
+                
+                // Only auto-fetch if it's different from the loaded state or if we have no checkpoints
+                if (state.raceOfficialUrl !== decodedUrl || !state.checkpoints || state.checkpoints.length === 0) {
+                    if (btnFetch) {
+                        setTimeout(() => {
+                            btnFetch.click();
+                        }, 200);
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Failed to parse query parameters', e);
+    }
     
     // Set active unit switcher state
     applyUnit(state.unit || 'km');

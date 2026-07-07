@@ -5,7 +5,7 @@ import urllib.request
 import json
 import re
 from urllib.parse import urlparse
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -29,8 +29,12 @@ class ParseUrlRequest(BaseModel):
 
 @app.get("/trail-mapper")
 @app.get("/trail-mapper/{path:path}")
-def redirect_old_trail_mapper_paths():
-    return RedirectResponse(url="https://gpx.eole.me/", status_code=301)
+def redirect_old_trail_mapper_paths(request: Request):
+    query_string = request.url.query
+    url = "https://gpx.eole.me/"
+    if query_string:
+        url += f"?{query_string}"
+    return RedirectResponse(url=url, status_code=301)
 
 @app.post("/api/download-gpx")
 def download_gpx(payload: DownloadGpxRequest):
