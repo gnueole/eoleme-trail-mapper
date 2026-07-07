@@ -162,14 +162,15 @@ deploy:
 	@make --no-print-directory _deploy SERVICES="$(DOCKER_SERVICES)"
 
 _deploy:
-	@printf "$(COLOR_CYAN)🚀 Deploying $(PROJECT_NAME) stack [$(VERSION)/$(VPS_PROJECT_TAG)] to VPS '$(VPS_SSH)' on '$(VPS_PATH)'...$(COLOR_RESET)\n"
-	@ssh $(VPS_SSH) "mkdir -p $(VPS_PATH)"
-	@scp $(COMPOSE_PROD) $(VPS_SSH):$(VPS_PATH)/docker-compose.prod.yml
+	@printf "$(COLOR_CYAN)🚀 [1/4]$(COLOR_RESET) Preparing deployment space on VPS $(COLOR_BOLD)$(VPS_SSH)$(COLOR_RESET)...\n"
+	@ssh $(VPS_SSH) "mkdir -p $(VPS_PATH)" >/dev/null
+	@printf "$(COLOR_CYAN)📦 [2/4]$(COLOR_RESET) Uploading static assets and configuration files...\n"
+	@scp $(COMPOSE_PROD) $(VPS_SSH):$(VPS_PATH)/docker-compose.prod.yml >/dev/null
+	@printf "$(COLOR_CYAN)🔑 [3/4]$(COLOR_RESET) Streaming production secrets from Doppler...$(COLOR_RESET)\n"
 	@if $(DOPPLER) --version >/dev/null 2>&1; then \
-		printf "$(COLOR_CYAN)🔑 Sending Doppler production secrets to VPS...$(COLOR_RESET)\n"; \
-		if $(DOPPLER) secrets download --project $(DOPPLER_PROJECT) --config $(DOPPLER_CONFIG_PROD) --no-file --format env > .env.prod.temp; then \
+		if $(DOPPLER) secrets download --project $(DOPPLER_PROJECT) --config $(DOPPLER_CONFIG_PROD) --no-file --format env > .env.prod.temp 2>/dev/null; then \
 			sed 's/="true"/=true/g; s/="false"/=false/g; s/^DOCKER_NETWORK_NAME="\(.*\)"/DOCKER_NETWORK_NAME=\1/g' .env.prod.temp > .env.prod.clean; \
-			scp .env.prod.clean $(VPS_SSH):$(VPS_PATH)/.env; \
+			scp .env.prod.clean $(VPS_SSH):$(VPS_PATH)/.env >/dev/null; \
 			rm -f .env.prod.temp .env.prod.clean; \
 		else \
 			printf "$(COLOR_RED)❌ Error: Doppler secrets download failed!$(COLOR_RESET)\n"; \
@@ -180,11 +181,10 @@ _deploy:
 		printf "$(COLOR_RED)❌ Error: Doppler CLI is not installed or not found in PATH!$(COLOR_RESET)\n"; \
 		exit 1; \
 	fi
-	@printf "$(COLOR_CYAN)📥 Pulling latest image from GHCR...$(COLOR_RESET)\n"
-	@ssh $(VPS_SSH) "cd $(VPS_PATH) && docker compose -f docker-compose.prod.yml pull"
-	@printf "$(COLOR_CYAN)🔄 Recreating and starting containers (handling potential container name conflicts)...$(COLOR_RESET)\n"
-	@ssh $(VPS_SSH) "docker rm -f eole-me-trail-mapper-prod-container 2>/dev/null || true"
-	@ssh $(VPS_SSH) "cd $(VPS_PATH) && docker compose -f docker-compose.prod.yml up -d --remove-orphans"
+	@printf "$(COLOR_CYAN)🐳 [4/4]$(COLOR_RESET) Recreating and starting production containers...$(COLOR_RESET)\n"
+	@ssh $(VPS_SSH) "cd $(VPS_PATH) && docker compose -f docker-compose.prod.yml pull" >/dev/null
+	@ssh $(VPS_SSH) "docker rm -f eole-me-trail-mapper-prod-container 2>/dev/null || true" >/dev/null
+	@ssh $(VPS_SSH) "cd $(VPS_PATH) && docker compose -f docker-compose.prod.yml up -d --remove-orphans" >/dev/null
 	@printf "$(COLOR_GREEN)✅ Deployment of $(PROJECT_NAME) [$(VERSION) / $(VPS_PROJECT_TAG)] successfully completed on production server!$(COLOR_RESET)\n"
 
 checklogs:
