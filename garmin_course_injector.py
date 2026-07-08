@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""
-Garmin Course Points Injector
-Author: Éole <hi@eole.me> & Antigravity (AI Data Engineering Expert)
+# -*- coding: utf-8 -*-
 
-This utility automates the placement of Garmin course points / waypoints along a GPX track
-for any outdoor race (trail, road, cycling). It generates:
-1. A modified GPX file containing waypoints (<wpt>) with icons (Food, Water, Residence, etc.).
-2. A TCX file containing native Course Points, which is the most reliable format for
-   Garmin Fenix's "Up Ahead" (Suivant) screen.
-"""
+# ==============================================================================
+# Author: Éole <hi@eole.me> & Antigravity (AI Data Engineering Expert)
+# Creation Date: 2026-06-20
+# Last Update: 2026-07-08
+# License: MIT
+#
+# Garmin Course Points Injector that automates placement of GPX waypoints and native TCX course points along a track.
+# ==============================================================================
 
 import argparse
 import csv
@@ -17,9 +17,43 @@ import urllib.request
 import xml.etree.ElementTree as ET
 import math
 import os
+import sys
 import re
 import unicodedata
 from datetime import datetime, timedelta
+
+# Terminal escape sequences for TrueColor/ANSI styling
+COLOR_RESET   = "\033[0m"
+COLOR_BOLD    = "\033[1m"
+COLOR_CYAN    = "\033[38;2;45;212;191m"
+COLOR_GREEN   = "\033[38;2;74;222;128m"
+COLOR_YELLOW  = "\033[38;2;253;224;71m"
+COLOR_RED     = "\033[38;2;244;63;94m"
+COLOR_PURPLE  = "\033[38;2;167;139;250m"
+COLOR_GRAY    = "\033[38;2;156;163;175m"
+
+# Semantic style variables (Meta-colorization)
+STYLE_TITLE       = COLOR_CYAN
+STYLE_SECTION     = COLOR_PURPLE
+STYLE_PHASE       = COLOR_CYAN
+STYLE_DISCREET    = COLOR_GRAY
+STYLE_INSTRUCTION = COLOR_GREEN
+STYLE_RESULT      = COLOR_GREEN
+STYLE_WARNING     = COLOR_YELLOW
+STYLE_ERROR       = COLOR_RED
+
+def log_success(msg):
+    print(f"  {STYLE_RESULT}✔{COLOR_RESET}  {msg}")
+
+def log_warn(msg):
+    print(f"  {STYLE_WARNING}⚠{COLOR_RESET}  {msg}")
+
+def log_error(msg):
+    print(f"  {STYLE_ERROR}✘{COLOR_RESET}  {msg}", file=sys.stderr)
+
+def log_info(msg):
+    print(f"  {STYLE_PHASE}ℹ{COLOR_RESET}  {msg}")
+
 
 # ==========================================
 # 1. CONFIGURATION & PREDEFINED DATA
