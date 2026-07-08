@@ -55,7 +55,7 @@ The application implements several security controls to guarantee safe operation
 * **Safe SSRF Proxying**: Uses hostname-IP resolution validation to prevent attackers from querying backend services or localhost.
 * **No Database/State Vulnerabilities**: Data is processed in-memory and discarded, eliminating injection or state-leakage attack vectors.
 
-For a detailed analysis of risks and remediations (such as mitigating DNS Rebinding), see the **[Security Assessment Report](C:/Users/gnueo/.gemini/antigravity-ide/brain/ef37d44e-0992-484c-ad93-0d9ea214b946/security_assessment.md)**.
+For a detailed analysis of risks and remediations (such as mitigating DNS Rebinding), see the **[Security Assessment Report](security_assessment.md)**.
 
 ---
 
