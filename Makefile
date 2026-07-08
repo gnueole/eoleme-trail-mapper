@@ -19,6 +19,20 @@ COLOR_YELLOW  := \033[1;33m
 COLOR_RED     := \033[1;31m
 COLOR_MAGENTA := \033[1;35m
 
+RESET         := $(COLOR_RESET)
+BOLD          := $(COLOR_BOLD)
+
+# Semantic Typology mappings (Meta-colorization)
+STYLE_TITLE       ?= $(COLOR_CYAN)
+STYLE_SECTION     ?= $(COLOR_MAGENTA)
+STYLE_PHASE       ?= $(COLOR_CYAN)
+STYLE_DISCREET    ?= $(COLOR_RESET)
+STYLE_INSTRUCTION ?= $(COLOR_GREEN)
+STYLE_RESULT      ?= $(COLOR_GREEN)
+STYLE_WARNING     ?= $(COLOR_YELLOW)
+STYLE_ERROR       ?= $(COLOR_RED)
+
+
 # ⚙️ INFRASTRUCTURE VARIABLES (SECURED)
 VPS_SSH              ?= eole.me
 VPS_PROJECT_NAME     := $(shell git config --get remote.origin.url | sed 's/.*\///; s/\.git$$//')
@@ -48,84 +62,84 @@ DOCKER_SERVICES := trail-mapper
 # ℹ️ HELP MENU
 # ──────────────────────────────────────────────────────────────────────────────
 help:
-	@printf "$(COLOR_CYAN)┌──────────────────────────────────────────────────────────────────────┐$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)                 🏔️  $(COLOR_BOLD)$(PROJECT_NAME)$(COLOR_RESET) Project Makefile 🏔️                 $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)├──────────────────────────────────────────────────────────────────────┤$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET) $(COLOR_YELLOW)Configuration & Setup:$(COLOR_RESET)                                               $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make configure       - Run system configuration and env setup      $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)                                                                      $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET) 💻 $(COLOR_YELLOW)Local Development (Docker Container):$(COLOR_RESET)                             $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make dev             - Start local dev containers (Port 3040)      $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make up              - Start local dev Docker containers.          $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make down            - Stop local dev Docker containers.           $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make restart         - Restart local dev Docker containers.        $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)                                                                      $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET) 🧪 $(COLOR_YELLOW)Testing & Verification:$(COLOR_RESET)                                           $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make test            - Run test suite inside Docker container      $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make setup-test      - Create local python venv for testing        $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make test-local      - Run test suite locally using virtual env    $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)                                                                      $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET) 🚀 $(COLOR_YELLOW)Production Deployment (VPS):$(COLOR_RESET)                                      $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make deploy          - Push production compose & pull/recreate     $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make deploy-delay    - Wait 150s for GHA build and deploy          $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make checklogs       - Fetch real-time production logs from VPS.   $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make check-build     - Query GHA build status (quiet on success)   $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET)   make check-build-full- Display verbose details of latest GHA run   $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)└──────────────────────────────────────────────────────────────────────┘$(COLOR_RESET)\n"
+	@printf "$(STYLE_TITLE)┌──────────────────────────────────────────────────────────────────────┐$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)                 🏔️  $(BOLD)$(PROJECT_NAME)$(RESET) Project Makefile 🏔️                 $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)├──────────────────────────────────────────────────────────────────────┤$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET) $(STYLE_WARNING)Configuration & Setup:$(RESET)                                               $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make configure       - Run system configuration and env setup      $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)                                                                      $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET) 💻 $(STYLE_WARNING)Local Development (Docker Container):$(RESET)                             $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make dev             - Start local dev containers (Port 3040)      $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make up              - Start local dev Docker containers.          $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make down            - Stop local dev Docker containers.           $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make restart         - Restart local dev Docker containers.        $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)                                                                      $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET) 🧪 $(STYLE_WARNING)Testing & Verification:$(RESET)                                           $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make test            - Run test suite inside Docker container      $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make setup-test      - Create local python venv for testing        $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make test-local      - Run test suite locally using virtual env    $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)                                                                      $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET) 🚀 $(STYLE_WARNING)Production Deployment (VPS):$(RESET)                                      $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make deploy          - Push production compose & pull/recreate     $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make deploy-delay    - Wait 150s for GHA build and deploy          $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make checklogs       - Fetch real-time production logs from VPS.   $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make check-build     - Query GHA build status (quiet on success)   $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET)   make check-build-full- Display verbose details of latest GHA run   $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)└──────────────────────────────────────────────────────────────────────┘$(RESET)\n"
 
 configure:
-	@printf "$(COLOR_CYAN)┌──────────────────────────────────────────────────────────────────────┐$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)│$(COLOR_RESET) ⚙️  $(COLOR_BOLD)Configuring Trail Mapper Development Environment$(COLOR_RESET)                 $(COLOR_CYAN)│$(COLOR_RESET)\n"
-	@printf "$(COLOR_CYAN)└──────────────────────────────────────────────────────────────────────┘$(COLOR_RESET)\n"
+	@printf "$(STYLE_TITLE)┌──────────────────────────────────────────────────────────────────────┐$(RESET)\n"
+	@printf "$(STYLE_TITLE)│$(RESET) ⚙️  $(BOLD)Configuring Trail Mapper Development Environment$(RESET)                 $(STYLE_TITLE)│$(RESET)\n"
+	@printf "$(STYLE_TITLE)└──────────────────────────────────────────────────────────────────────┘$(RESET)\n"
 	@if $(DOPPLER) --version >/dev/null 2>&1; then \
-		printf "$(COLOR_GREEN)✅ Doppler CLI is installed.$(COLOR_RESET)\n"; \
-		printf "$(COLOR_YELLOW)👉 Log in to Doppler:$(COLOR_RESET)\n"; \
+		printf "$(STYLE_RESULT)✅ Doppler CLI is installed.$(RESET)\n"; \
+		printf "$(STYLE_WARNING)👉 Log in to Doppler:$(RESET)\n"; \
 		$(DOPPLER) login; \
-		printf "$(COLOR_YELLOW)👉 Setup project '$(DOPPLER_PROJECT)' for the local directory:$(COLOR_RESET)\n"; \
+		printf "$(STYLE_WARNING)👉 Setup project '$(DOPPLER_PROJECT)' for the local directory:$(RESET)\n"; \
 		$(DOPPLER) setup --project $(DOPPLER_PROJECT) --config $(DOPPLER_CONFIG_DEV); \
 	else \
-		printf "$(COLOR_RED)❌ Doppler CLI is not installed.$(COLOR_RESET)\n"; \
-		printf "$(COLOR_YELLOW)💡 Doppler is used to securely sync development & production secrets.$(COLOR_RESET)\n"; \
+		printf "$(STYLE_ERROR)❌ Doppler CLI is not installed.$(RESET)\n"; \
+		printf "$(STYLE_WARNING)💡 Doppler is used to securely sync development & production secrets.$(RESET)\n"; \
 		printf "👉 Install it via: https://docs.doppler.com/docs/install-cli\n"; \
 	fi
-	@printf "$(COLOR_CYAN)──────────────────────────────────────────────────────────────────────$(COLOR_RESET)\n"
+	@printf "$(STYLE_TITLE)──────────────────────────────────────────────────────────────────────$(RESET)\n"
 
 dev: up
 
 up:
-	@printf "$(COLOR_CYAN)✨ Starting local development environment...$(COLOR_RESET)\n"
+	@printf "$(STYLE_TITLE)✨ Starting local development environment...$(RESET)\n"
 	@if $(DOPPLER) --version >/dev/null 2>&1; then \
-		printf "$(COLOR_CYAN)🔑 Syncing fresh development secrets from Doppler...$(COLOR_RESET)\n"; \
+		printf "$(STYLE_PHASE)🔑 Syncing fresh development secrets from Doppler...$(RESET)\n"; \
 		if $(DOPPLER) secrets download --project $(DOPPLER_PROJECT) --config $(DOPPLER_CONFIG_DEV) --no-file --format env > .env.temp 2>/dev/null; then \
 			sed 's/="true"/=true/g; s/="false"/=false/g; s/^DOCKER_NETWORK_NAME="\(.*\)"/DOCKER_NETWORK_NAME=\1/g' .env.temp > .env; \
 			rm -f .env.temp; \
-			printf "$(COLOR_GREEN)✅ Secrets successfully synced!$(COLOR_RESET)\n"; \
+			printf "$(STYLE_RESULT)✅ Secrets successfully synced!$(RESET)\n"; \
 		else \
-			printf "$(COLOR_YELLOW)⚠️ Doppler secrets sync failed. Falling back to existing .env.$(COLOR_RESET)\n"; \
+			printf "$(STYLE_WARNING)⚠️ Doppler secrets sync failed. Falling back to existing .env.$(RESET)\n"; \
 			rm -f .env.temp; \
 			if [ ! -f .env ]; then \
-				printf "$(COLOR_RED)⚠️ No local .env found. Copying .env.example fallback...$(COLOR_RESET)\n"; \
+				printf "$(STYLE_ERROR)⚠️ No local .env found. Copying .env.example fallback...$(RESET)\n"; \
 				cp $(DOCKER_DIR)/.env.example .env 2>/dev/null || printf "No .env.example found, using empty env\n"; \
 			fi; \
-			printf "$(COLOR_YELLOW)💡 Tip: Run 'make configure' to set up your Doppler credentials.$(COLOR_RESET)\n"; \
+			printf "$(STYLE_WARNING)💡 Tip: Run 'make configure' to set up your Doppler credentials.$(RESET)\n"; \
 		fi; \
 	else \
 		if [ ! -f .env ]; then \
-			printf "$(COLOR_YELLOW)⚠️ Doppler CLI not found. Copying .env.example fallback...$(COLOR_RESET)\n"; \
+			printf "$(STYLE_WARNING)⚠️ Doppler CLI not found. Copying .env.example fallback...$(RESET)\n"; \
 			cp $(DOCKER_DIR)/.env.example .env 2>/dev/null || printf "No .env.example found, using empty env\n"; \
 		else \
-			printf "$(COLOR_GREEN)ℹ️ Using existing local .env file.$(COLOR_RESET)\n"; \
+			printf "$(STYLE_RESULT)ℹ️ Using existing local .env file.$(RESET)\n"; \
 		fi; \
-		printf "$(COLOR_YELLOW)💡 Tip: Install Doppler CLI (https://doppler.com) to automatically keep development secrets in sync.$(COLOR_RESET)\n"; \
+			printf "$(STYLE_WARNING)💡 Tip: Install Doppler CLI (https://doppler.com) to automatically keep development secrets in sync.$(RESET)\n"; \
 	fi
 	@if [ -f .env ]; then \
 		NETWORK_NAME=$$(grep '^DOCKER_NETWORK_NAME=' .env | cut -d'=' -f2 | tr -d '"' | tr -d "'" || echo ""); \
 		if [ -n "$$NETWORK_NAME" ]; then \
 			if docker network inspect $$NETWORK_NAME >/dev/null 2>&1; then \
-				printf "$(COLOR_GREEN)🔌 Existing shared network '$$NETWORK_NAME' detected. Joining integrated eole.me stack...$(COLOR_RESET)\n"; \
+				printf "$(STYLE_RESULT)🔌 Existing shared network '$$NETWORK_NAME' detected. Joining integrated eole.me stack...$(RESET)\n"; \
 				DOCKER_NETWORK_EXTERNAL=true docker compose -f $(COMPOSE_DEV) --env-file .env up -d --build; \
 			else \
-				printf "$(COLOR_YELLOW)ℹ️ Shared network '$$NETWORK_NAME' not found. Running in FULL STANDALONE mode...$(COLOR_RESET)\n"; \
+				printf "$(STYLE_WARNING)ℹ️ Shared network '$$NETWORK_NAME' not found. Running in FULL STANDALONE mode...$(RESET)\n"; \
 				DOCKER_NETWORK_EXTERNAL=false docker compose -f $(COMPOSE_DEV) --env-file .env up -d --build; \
 			fi; \
 		else \
@@ -134,10 +148,10 @@ up:
 	else \
 		docker compose -f $(COMPOSE_DEV) up -d --build; \
 	fi
-	@printf "$(COLOR_GREEN)🚀 $(PROJECT_NAME) is ready locally on http://localhost:3040/trail-mapper/ !$(COLOR_RESET)\n"
+	@printf "$(STYLE_RESULT)🚀 $(PROJECT_NAME) is ready locally on http://localhost:3040/trail-mapper/ !$(RESET)\n"
 
 down:
-	@printf "$(COLOR_YELLOW)🛑 Stopping local development container...$(COLOR_RESET)\n"
+	@printf "$(STYLE_WARNING)🛑 Stopping local development container...$(RESET)\n"
 	@if [ -f .env ]; then \
 		NETWORK_NAME=$$(grep '^DOCKER_NETWORK_NAME=' .env | cut -d'=' -f2 | tr -d '"' | tr -d "'" || echo ""); \
 		if [ -n "$$NETWORK_NAME" ]; then \
@@ -162,33 +176,33 @@ deploy:
 	@make --no-print-directory _deploy SERVICES="$(DOCKER_SERVICES)"
 
 _deploy:
-	@printf "$(COLOR_CYAN)🚀 [1/4]$(COLOR_RESET) Preparing deployment space on VPS $(COLOR_BOLD)$(VPS_SSH)$(COLOR_RESET)...\n"
+	@printf "$(STYLE_RESULT)🚀 [1/4]$(RESET) Preparing deployment space on VPS $(BOLD)$(VPS_SSH)$(RESET)...\n"
 	@ssh $(VPS_SSH) "mkdir -p $(VPS_PATH)" >/dev/null
-	@printf "$(COLOR_CYAN)📦 [2/4]$(COLOR_RESET) Uploading static assets and configuration files...\n"
+	@printf "$(STYLE_PHASE)📦 [2/4]$(RESET) Uploading static assets and configuration files...\n"
 	@scp $(COMPOSE_PROD) $(VPS_SSH):$(VPS_PATH)/docker-compose.prod.yml >/dev/null
-	@printf "$(COLOR_CYAN)🔑 [3/4]$(COLOR_RESET) Streaming production secrets from Doppler...$(COLOR_RESET)\n"
+	@printf "$(STYLE_PHASE)🔑 [3/4]$(RESET) Streaming production secrets from Doppler...$(RESET)\n"
 	@if $(DOPPLER) --version >/dev/null 2>&1; then \
 		if $(DOPPLER) secrets download --project $(DOPPLER_PROJECT) --config $(DOPPLER_CONFIG_PROD) --no-file --format env > .env.prod.temp 2>/dev/null; then \
 			sed 's/="true"/=true/g; s/="false"/=false/g; s/^DOCKER_NETWORK_NAME="\(.*\)"/DOCKER_NETWORK_NAME=\1/g' .env.prod.temp > .env.prod.clean; \
 			scp .env.prod.clean $(VPS_SSH):$(VPS_PATH)/.env >/dev/null; \
 			rm -f .env.prod.temp .env.prod.clean; \
 		else \
-			printf "$(COLOR_RED)❌ Error: Doppler secrets download failed!$(COLOR_RESET)\n"; \
+			printf "$(STYLE_ERROR)❌ Error: Doppler secrets download failed!$(RESET)\n"; \
 			rm -f .env.prod.temp; \
 			exit 1; \
 		fi; \
 	else \
-		printf "$(COLOR_RED)❌ Error: Doppler CLI is not installed or not found in PATH!$(COLOR_RESET)\n"; \
+		printf "$(STYLE_ERROR)❌ Error: Doppler CLI is not installed or not found in PATH!$(RESET)\n"; \
 		exit 1; \
 	fi
-	@printf "$(COLOR_CYAN)🐳 [4/4]$(COLOR_RESET) Recreating and starting production containers...$(COLOR_RESET)\n"
+	@printf "$(STYLE_PHASE)🐳 [4/4]$(RESET) Recreating and starting production containers...$(RESET)\n"
 	@ssh $(VPS_SSH) "cd $(VPS_PATH) && docker compose -f docker-compose.prod.yml pull" >/dev/null
 	@ssh $(VPS_SSH) "docker rm -f eole-me-trail-mapper-prod-container 2>/dev/null || true" >/dev/null
 	@ssh $(VPS_SSH) "cd $(VPS_PATH) && docker compose -f docker-compose.prod.yml up -d --remove-orphans" >/dev/null
-	@printf "$(COLOR_GREEN)✅ Deployment of $(PROJECT_NAME) [$(VERSION) / $(VPS_PROJECT_TAG)] successfully completed on production server!$(COLOR_RESET)\n"
+	@printf "$(STYLE_RESULT)✅ Deployment of $(PROJECT_NAME) [$(VERSION) / $(VPS_PROJECT_TAG)] successfully completed on production server!$(RESET)\n"
 
 checklogs:
-	@printf "$(COLOR_CYAN)📟 Fetching real-time production logs from VPS [$(VPS_SSH)]...$(COLOR_RESET)\n"
+	@printf "$(STYLE_PHASE)📟 Fetching real-time production logs from VPS [$(VPS_SSH)]...$(RESET)\n"
 	@ssh $(VPS_SSH) "cd $(VPS_PATH) && docker compose -f docker-compose.prod.yml logs -f"
 
 check-build:
@@ -198,11 +212,11 @@ check-build-full:
 	@python3 toolkit/check_build.py --full
 
 deploy-delay:
-	@printf "$(COLOR_YELLOW)⏳ Waiting 150 seconds for GitHub Actions build to complete...$(COLOR_RESET)\n"
+	@printf "$(STYLE_WARNING)⏳ Waiting 150 seconds for GitHub Actions build to complete...$(RESET)\n"
 	git push && sleep 150 && make --no-print-directory deploy
 
 test:
-	@printf "$(COLOR_CYAN)🧪 Running unit tests inside the development container...$(COLOR_RESET)\n"
+	@printf "$(STYLE_PHASE)🧪 Running unit tests inside the development container...$(RESET)\n"
 	@if [ -f .env ]; then \
 		NETWORK_NAME=$$(grep '^DOCKER_NETWORK_NAME=' .env | cut -d'=' -f2 | tr -d '"' | tr -d "'" || echo ""); \
 		if [ -n "$$NETWORK_NAME" ]; then \
@@ -219,15 +233,15 @@ test:
 	fi
 
 setup-test:
-	@printf "$(COLOR_CYAN)📦 Setting up local Python virtual environment for testing...$(COLOR_RESET)\n"
+	@printf "$(STYLE_PHASE)📦 Setting up local Python virtual environment for testing...$(RESET)\n"
 	python -m venv .venv
 	@if [ -f .venv/bin/activate ]; then \
 		.venv/bin/pip install -r requirements.txt; \
 	else \
 		.venv/Scripts/pip install -r requirements.txt; \
 	fi
-	@printf "$(COLOR_GREEN)✅ Test environment set up successfully!$(COLOR_RESET)\n"
-	@printf "👉 Run tests with: $(COLOR_YELLOW)make test-local$(COLOR_RESET)\n"
+	@printf "$(STYLE_RESULT)✅ Test environment set up successfully!$(RESET)\n"
+	@printf "👉 Run tests with: $(STYLE_WARNING)make test-local$(RESET)\n"
 
 test-local:
 	@if [ -d .venv ]; then \
