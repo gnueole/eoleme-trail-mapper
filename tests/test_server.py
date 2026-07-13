@@ -167,3 +167,38 @@ def test_parse_utmb_next_data():
     assert stations[2]["ele"] == 1968
     assert stations[2]["icon"] == "Medical Facility"
 
+
+def test_merge_endpoint_size_limit():
+    large_gpx = "A" * (6 * 1024 * 1024)  # 6MB
+    stations = []
+    file_payload = {
+        "gpx_file": ("test.gpx", large_gpx.encode("utf-8"), "application/gpx+xml")
+    }
+    data_payload = {
+        "stations_json": json.dumps(stations),
+        "official_dist": "2.0",
+        "no_scale": "true",
+        "shorten_names": "true",
+        "char_limit": "12",
+        "add_elev": "true"
+    }
+    response = client.post(
+        "/api/merge",
+        files=file_payload,
+        data=data_payload
+    )
+    assert response.status_code == 400
+    assert "File size exceeds the 5MB limit" in response.json()["detail"]
+
+
+def test_safe_urlopen_protection():
+    from utils.security import safe_urlopen
+    # Unsafe local IP should raise ValueError
+    with pytest.raises(ValueError) as exc:
+        safe_urlopen("http://127.0.0.1/test.gpx")
+    assert "Unsafe URL resolved to private/reserved IP address" in str(exc.value)
+
+    with pytest.raises(ValueError) as exc2:
+        safe_urlopen("http://localhost/test.gpx")
+    assert "Unsafe URL" in str(exc2.value)
+

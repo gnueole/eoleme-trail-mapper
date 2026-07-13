@@ -13,7 +13,7 @@ import defusedxml.ElementTree as DET
 from garmin_course_injector import process_gpx_and_stations_data
 
 # Import split utility submodules
-from utils.security import get_version, is_safe_url
+from utils.security import get_version, is_safe_url, safe_urlopen
 from utils.parsers import guess_waypoint_symbol, parse_utmb_next_data, parse_livetrail_xml, convert_livetrail_js_to_gpx
 
 app = FastAPI(title="Trail Mapper & GPX POI Injector Backend", version=get_version())
@@ -53,7 +53,7 @@ def download_gpx(payload: DownloadGpxRequest):
                     clean_url,
                     headers={'User-Agent': 'Mozilla/5.0'}
                 )
-                with urllib.request.urlopen(req, timeout=10) as response:
+                with safe_urlopen(req, timeout=10) as response:
                     js_content = response.read().decode('utf-8', errors='replace')
                 gpx_xml = convert_livetrail_js_to_gpx(js_content, course_id)
                 if not gpx_xml:
@@ -70,7 +70,7 @@ def download_gpx(payload: DownloadGpxRequest):
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         )
         # Timeout at 5 seconds, read in chunks to prevent zip bomb / infinite stream
-        with urllib.request.urlopen(req, timeout=5) as response:
+        with safe_urlopen(req, timeout=5) as response:
             content_type = response.headers.get('Content-Type', '')
             # Verify file size limit (5MB)
             content_length = response.headers.get('Content-Length')
@@ -128,7 +128,7 @@ def parse_url(payload: ParseUrlRequest):
                 parcours_url,
                 headers={'User-Agent': 'Mozilla/5.0'}
             )
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with safe_urlopen(req, timeout=10) as response:
                 xml_content = response.read().decode('utf-8', errors='replace')
                 
             parsed_data = parse_livetrail_xml(xml_content, course_id)
@@ -341,8 +341,11 @@ async def merge_data(
         # Load and validate stations json
         stations_list = json.loads(stations_json)
         
-        # Read uploaded GPX bytes
+        # Read uploaded GPX bytes with 5MB size limit
+        MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB limit
         gpx_bytes = await gpx_file.read()
+        if len(gpx_bytes) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail="File size exceeds the 5MB limit.")
         
         # Safe XML Validation via defusedxml
         try:
@@ -404,6 +407,8 @@ async def merge_data(
             "garmin_tcx": results.get('garmin_tcx', '')
         })
         
+    except HTTPException as he:
+        raise he
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
 
