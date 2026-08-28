@@ -431,12 +431,17 @@ async def receive_telemetry(data: TelemetryRequest):
     if env == "dev":
         return {"status": "skipped", "reason": "dev_environment"}
         
-    n8n_url = os.environ.get("N8N_TRAIL_MAPPER_TELEMETRY_WEBHOOK_URL") or os.environ.get("N8N_TELEMETRY_WEBHOOK_URL")
-    if not n8n_url:
-        return {"status": "skipped", "reason": "webhook_not_configured"}
+    # Vector, not n8n. The receiving workflow wrote to a Notion database and
+    # failed on every event; Vector ships straight to the Axiom eole-telemetry
+    # dataset. The fallback matters: this container received no environment at
+    # all until 2026-08-28, so the call was skipped in silence, always.
+    n8n_url = (os.environ.get("TELEMETRY_WEBHOOK_URL")
+               or os.environ.get("N8N_TRAIL_MAPPER_TELEMETRY_WEBHOOK_URL")
+               or "http://vector:8080")
 
     try:
-        req_payload = data.dict()
+        # The Axiom dashboards group by `application`.
+        req_payload = {"application": "trail-mapper", "environment": env, **data.dict()}
         req_data = json.dumps(req_payload).encode('utf-8')
         req = urllib.request.Request(
             n8n_url,

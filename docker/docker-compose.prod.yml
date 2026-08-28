@@ -4,6 +4,12 @@ services:
   trail-mapper:
     image: ghcr.io/gnueole/eoleme-trail-mapper:latest
     container_name: eole-me-trail-mapper-prod-container
+    environment:
+      # This service had no environment block at all, so the telemetry variable
+      # never reached it and every event was skipped with
+      # {"status":"skipped","reason":"webhook_not_configured"}.
+      - TELEMETRY_WEBHOOK_URL=${TELEMETRY_WEBHOOK_URL:-http://vector:8080}
+      - DOPPLER_ENVIRONMENT=${DOPPLER_ENVIRONMENT:-prod}
     restart: unless-stopped
     networks:
       - eole_shared_network

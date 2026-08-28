@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.3] - 2026-08-28
+
+### Fixed
+
+- **Telemetry never left the container, and now does.** `server.py` read
+  `N8N_TRAIL_MAPPER_TELEMETRY_WEBHOOK_URL`, which exists in Doppler but never
+  reached this service: `docker-compose.prod.yml` declared no `environment`
+  block at all, so every event returned
+  `{"status":"skipped","reason":"webhook_not_configured"}` and always had.
+
+  The service now has an environment block, and telemetry posts to
+  `http://vector:8080` — Vector ships to the Axiom `eole-telemetry` dataset —
+  tagged `application: "trail-mapper"`.
+
+  The old receiving workflow carried the same `$json.body` defect as its two
+  siblings and is quarantined.
+
+---
+
 ## [1.4.2] - 2026-08-27
 
 ### Known
