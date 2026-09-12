@@ -38,16 +38,21 @@ Tasks identified during the **Security Assessment**
   Friday and every cutoff on a non-Friday race landed a day out.
 - [x] Honour a UTC offset when the start date carries one — it used to be
   truncated, so `…T08:00:00+02:00` was written as `08:00Z`.
-- [ ] Add a UI datetime picker to allow custom start date/time adjustments for the race track.
-- [ ] **Blocked — UTMB publishes no timezone.** Every ISO string in
-  `__NEXT_DATA__` is naive local wall time; the props carry only
-  `event.region` ("Europe") and `event.lat`/`event.lng`. Course points are
-  therefore written with local wall time under a `Z` suffix, a *uniform* shift
-  (2h for Chamonix and Nice in summer) that leaves the spacing between cutoffs
-  correct but the absolute times wrong. Closing this needs either a
-  coordinates→IANA-zone dependency such as `timezonefinder` (~50MB of polygon
-  data in the image, for a display-only error) or the datetime picker above
-  supplying the offset by hand. Worth deciding which before either is built.
+- [x] Add a UI datetime picker to allow custom start date/time adjustments for
+  the race track. Prefilled from the scraped start, so the value applied is
+  visible and editable rather than silent, and paired with a UTC offset
+  selector.
+- [x] **Workaround shipped for the missing timezone.** Selecting the start
+  offset writes a genuinely correct UTC time — Nice at 08:00 with UTC+02:00
+  becomes `06:00Z` rather than `08:00Z`.
+- [ ] **Automatic** timezone detection is still not possible from UTMB alone.
+  Every ISO string in `__NEXT_DATA__` is naive local wall time; the props carry
+  only `event.region` ("Europe") and `event.lat`/`event.lng`, no zone. Left
+  unset, course points keep local wall time under a `Z` suffix — a *uniform*
+  shift, so the spacing between cutoffs stays correct and only the absolute
+  times are wrong. Automating it needs a coordinates→IANA-zone dependency such
+  as `timezonefinder` (~50MB of polygon data in the image), which is a poor
+  trade now that the offset can be chosen in one click.
 
 ### 3. Checkpoints Table Improvements
 - [ ] Add multi-select checkboxes for batch actions (e.g., toggle active state, delete multiple).

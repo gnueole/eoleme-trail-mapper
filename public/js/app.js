@@ -25,6 +25,8 @@ const btnParseHtml = document.getElementById('btn-parse-html');
 
 const settingCharLimit = document.getElementById('garmin-char-limit');
 const settingSnapThreshold = document.getElementById('snap-threshold');
+const settingStartDateTime = document.getElementById('race-start-datetime');
+const settingStartOffset = document.getElementById('race-start-offset');
 const settingShortenNames = document.getElementById('shorten-names');
 const settingAddElevToName = document.getElementById('add-elev-to-name');
 
@@ -162,7 +164,21 @@ function setLanguage(lang) {
     settingCharLimit.options[1].textContent = TRANSLATIONS[lang].char_limit_15;
     settingCharLimit.options[2].textContent = TRANSLATIONS[lang].char_limit_inf;
     document.querySelector('label[for="snap-threshold"]').textContent = TRANSLATIONS[lang].snap_threshold_label;
-    
+
+    const startDateTimeLabel = document.querySelector('label[for="race-start-datetime"]');
+    if (startDateTimeLabel) {
+        startDateTimeLabel.textContent = TRANSLATIONS[lang].start_datetime_label;
+        const helper = startDateTimeLabel.parentElement.querySelector('.input-helper');
+        if (helper) helper.textContent = TRANSLATIONS[lang].start_datetime_helper;
+    }
+    const startOffsetLabel = document.querySelector('label[for="race-start-offset"]');
+    if (startOffsetLabel) {
+        startOffsetLabel.textContent = TRANSLATIONS[lang].start_offset_label;
+        const helper = startOffsetLabel.parentElement.querySelector('.input-helper');
+        if (helper) helper.textContent = TRANSLATIONS[lang].start_offset_helper;
+    }
+    if (settingStartOffset) settingStartOffset.options[0].textContent = TRANSLATIONS[lang].start_offset_none;
+
     const shortenNamesLabel = document.querySelector('label[for="shorten-names"]') || document.querySelector('.settings-grid + .checkbox-group label');
     if (shortenNamesLabel) {
         shortenNamesLabel.textContent = TRANSLATIONS[lang].shorten_names;
@@ -656,6 +672,8 @@ function loadStateFromLocalStorage() {
         if (data.settings) {
             if (settingCharLimit) settingCharLimit.value = data.settings.charLimit || '15';
             if (settingSnapThreshold) settingSnapThreshold.value = data.settings.snapThreshold || '150';
+            if (settingStartDateTime) settingStartDateTime.value = data.settings.startDateTime || '';
+            if (settingStartOffset) settingStartOffset.value = data.settings.startOffset || '';
             if (settingShortenNames) settingShortenNames.checked = data.settings.shortenNames !== false;
             if (settingAddElevToName) settingAddElevToName.checked = !!data.settings.addElev;
         }
@@ -967,6 +985,25 @@ function checkMergeAbility() {
     if (btnMergeDownloadCoros) btnMergeDownloadCoros.disabled = disabled;
 }
 
+/**
+ * The start the course points are timed against: whatever is in the picker,
+ * falling back to the date scraped from the race page. UTMB publishes no
+ * timezone, so the offset dropdown is the only way to say what its wall-clock
+ * times actually mean; left unset, they are sent naive and written as-is.
+ */
+function getEffectiveStartDate() {
+    const picked = settingStartDateTime ? settingStartDateTime.value : '';
+    const base = picked || state.raceStartDateIso;
+    if (!base) return null;
+
+    // datetime-local yields "YYYY-MM-DDTHH:MM"; the backend wants seconds
+    const withSeconds = /T\d{2}:\d{2}$/.test(base) ? `${base}:00` : base;
+
+    const offset = settingStartOffset ? settingStartOffset.value : '';
+    if (!offset) return withSeconds;
+    return withSeconds.replace(/(?:Z|[+-]\d{2}:\d{2})$/, '') + offset;
+}
+
 async function triggerMergeDownload(format) {
     if (state.gpxTrackPoints.length === 0 || !state.originalGPXXml) {
         alert('No GPX route loaded.');
@@ -1011,9 +1048,11 @@ async function triggerMergeDownload(format) {
     formData.append('unit', state.unit || 'km');
     // Without this the injector times the course points against a hardcoded
     // Friday, so every cutoff lands on the wrong day for a race that does not
-    // start on one. Omitted for a hand-uploaded GPX, which keeps its own times.
-    if (state.raceStartDateIso) {
-        formData.append('start_date', state.raceStartDateIso);
+    // start on one. Omitted for a hand-uploaded GPX with no start set, which
+    // keeps its own timestamps.
+    const startDate = getEffectiveStartDate();
+    if (startDate) {
+        formData.append('start_date', startDate);
     }
     
     try {
@@ -1171,6 +1210,12 @@ btnFetch.addEventListener('click', async () => {
         state.raceStartDate = metadata.start_date || null;
         state.raceStartDateIso = metadata.start_date_iso || null;
         state.raceDirectEntry = metadata.direct_entry || null;
+
+        // Prefill the picker so the scraped start is visible and adjustable
+        // rather than applied invisibly. datetime-local wants minute precision.
+        if (settingStartDateTime && state.raceStartDateIso) {
+            settingStartDateTime.value = state.raceStartDateIso.slice(0, 16);
+        }
 
         // Update URL query parameter in browser address bar
         try {
@@ -1330,6 +1375,8 @@ btnClearState.addEventListener('click', () => {
     state.raceStartDate = null;
     state.raceStartDateIso = null;
     state.raceDirectEntry = null;
+    if (settingStartDateTime) settingStartDateTime.value = '';
+    if (settingStartOffset) settingStartOffset.value = '';
     
     if (raceUrlInput) {
         raceUrlInput.value = '';

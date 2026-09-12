@@ -21,6 +21,8 @@ export let state = {
 export function saveStateToLocalStorage() {
     try {
         const raceUrlInput = document.getElementById('race-url');
+        const settingStartDateTime = document.getElementById('race-start-datetime');
+        const settingStartOffset = document.getElementById('race-start-offset');
         const settingCharLimit = document.getElementById('garmin-char-limit');
         const settingSnapThreshold = document.getElementById('snap-threshold');
         const settingShortenNames = document.getElementById('shorten-names');
@@ -48,6 +50,8 @@ export function saveStateToLocalStorage() {
             settings: {
                 charLimit: settingCharLimit ? settingCharLimit.value : '15',
                 snapThreshold: settingSnapThreshold ? settingSnapThreshold.value : '150',
+                startDateTime: settingStartDateTime ? settingStartDateTime.value : '',
+                startOffset: settingStartOffset ? settingStartOffset.value : '',
                 shortenNames: settingShortenNames ? settingShortenNames.checked : true,
                 addElev: settingAddElevToName ? settingAddElevToName.checked : false
             }

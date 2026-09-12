@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.0] - 2026-09-13
+
+### Added
+
+- **Race start picker, with a timezone offset.** Two controls in the Garmin
+  settings card: a `datetime-local` for the start and a UTC offset selector.
+
+  The start is prefilled from the scraped `startDateIso`, so the value the
+  course points are timed against is now visible and editable instead of being
+  applied invisibly, and it still works for a hand-uploaded GPX that was never
+  scraped.
+
+  The offset is what makes the timezone problem solvable. UTMB publishes none,
+  so until now local wall time was written under a `Z` suffix; picking the
+  offset produces a genuinely correct UTC — Nice at 08:00 with UTC+02:00 is
+  written `06:00Z`, not `08:00Z`. Left unset, behaviour is unchanged.
+
+  This closes the roadmap's datetime-picker item and retires the argument for a
+  `timezonefinder` dependency: ~50MB of polygon data in the image is a poor
+  trade against one dropdown.
+
+---
+
 ## [1.5.3] - 2026-09-12
 
 ### Fixed
