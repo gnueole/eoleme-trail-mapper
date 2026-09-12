@@ -89,10 +89,11 @@ deliberately not bumped.
 
 ### Notes
 
-- The LiveTrail integration had never been exercised in this repository — no
-  test covered it and no live run had touched it. Both bugs above were found by
-  running the real `templiers` and `saintelyon` instances end to end, which is
-  now the thing the new tests pin down.
+- `tests/test_livetrail.py` did cover this code, and passed throughout — its
+  fixture uses `p_GRR[0]=[...]`, the flat form, which is exactly the shape that
+  worked. A test written against the one variant you know about cannot fail on
+  the one you do not. Both bugs surfaced only by running the real `templiers`
+  and `saintelyon` instances end to end, and the new cases pin both shapes.
 - Still open there: LiveTrail publishes no month or year, so its courses have no
   absolute anchor and fall back to the injector's placeholder date. Relative
   spacing is exact, which is what the watch uses.
