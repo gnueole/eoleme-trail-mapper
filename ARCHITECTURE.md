@@ -38,7 +38,8 @@ Following modern web standards, the frontend uses native browser **ES Modules** 
 
 ### 2. Backend API ([server.py](server.py))
 * **SSRF Guard**: Resolves remote hostnames through `socket.getaddrinfo` to ensure target URLs are not loopbacks or local private IP addresses before sending HTTP requests.
-* **Next.js Scraper**: Extracts the `__NEXT_DATA__` script block from UTMB pages to parse official race aid stations, categories, and GPX track endpoints.
+* **Next.js Scraper**: Extracts the `__NEXT_DATA__` script block from UTMB *event* race pages (`montblanc.utmb.world/races/<race>`, `nice.utmb.world/races/<race>`, …) to parse official race aid stations, categories, and GPX track endpoints. Aid-station icons are driven by the point's `supplies` level (`drink` / `food` / `hotFood`); `hasMedical` is only consulted for points that offer no supplies, because UTMB now flags it on every staffed station.
+* **App Router Detection**: `live.utmb.world` has migrated to the Next.js App Router and loads its courses from `utmblive-api.utmb.world`, so its HTML carries no aid stations. Such pages are detected (`__next_f` present, no `__NEXT_DATA__`) and rejected with a `422` pointing at the event race page, rather than silently returning an empty course.
 * **In-Memory Merging**: Uploaded GPX XML structures and JSON checkpoint tables are fed into `garmin_course_injector.py` and output directly to the client without saving files to disk.
 
 ### 3. Waypoint Calibration Engine ([garmin_course_injector.py](garmin_course_injector.py))
