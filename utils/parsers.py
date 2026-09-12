@@ -27,6 +27,44 @@ def guess_waypoint_symbol(name: str) -> str:
             return symbol
     return "Checkpoint"
 
+# UTMB grades the refreshments available at each track point with a "supplies"
+# level. The current vocabulary is none | drink | food | hotFood; "complete" is
+# the pre-2026 spelling and is kept so older cached pages still map correctly.
+UTMB_SUPPLY_SYMBOLS = {
+    "drink": "Water Source",
+    "food": "Food",
+    "hotfood": "Food",
+    "complete": "Food",
+}
+
+# Tolerant of attribute order, quoting and whitespace: UTMB has already shuffled
+# these once, and an exact-match regex silently degrades to the generic scraper.
+NEXT_DATA_RE = re.compile(
+    r'<script[^>]*\bid=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', re.S | re.I
+)
+
+
+def is_client_rendered_next_page(html: str) -> bool:
+    """
+    True for a Next.js App Router page: the payload is streamed into
+    self.__next_f and there is no __NEXT_DATA__ blob to scrape. live.utmb.world
+    migrated this way and now renders its course data from its own API, so no
+    amount of HTML parsing will recover the aid stations.
+    """
+    return NEXT_DATA_RE.search(html) is None and "__next_f" in html
+
+
+def _cloudinary_image_url(image: dict) -> str:
+    """Builds a delivery URL from a Cloudinary image descriptor, or None."""
+    if not image:
+        return None
+    pub_id = image.get("publicId")
+    if not pub_id:
+        return None
+    fmt = image.get("format") or "png"
+    return f"https://res.cloudinary.com/utmb-world/image/upload/f_auto,q_auto/{quote(pub_id)}.{fmt}"
+
+
 def parse_utmb_next_data(html: str) -> dict:
     """
     Parses the __NEXT_DATA__ script block from a UTMB Next.js page.
@@ -34,24 +72,24 @@ def parse_utmb_next_data(html: str) -> dict:
     """
     try:
         # Search for the script block
-        match = re.search(r'<script\s+id="__NEXT_DATA__"\s+type="application/json">(.*?)</script>', html, re.S)
+        match = NEXT_DATA_RE.search(html)
         if not match:
             return None
         
         data = json.loads(match.group(1))
-        page_props = data.get("props", {}).get("pageProps", {})
+        page_props = data.get("props", {}).get("pageProps") or {}
         
         gpx_link = page_props.get("gpxUrl")
-        track = page_props.get("track", {})
-        points = track.get("points", [])
+        track = page_props.get("track") or {}
+        points = track.get("points") or []
         
         if not points and not gpx_link:
             return None
             
         # Parse page metadata
-        page_header = page_props.get("pageHeader", {})
-        banner_stats = page_props.get("bannerStats", [])
-        main_stats = page_props.get("mainStats", [])
+        page_header = page_props.get("pageHeader") or {}
+        banner_stats = page_props.get("bannerStats") or []
+        main_stats = page_props.get("mainStats") or []
         
         category = None
         running_stones = None
@@ -73,22 +111,29 @@ def parse_utmb_next_data(html: str) -> dict:
                 elif stat_keys[name] == "direct_entry":
                     direct_entry = val
                  
-        logo_url = None
-        race_logo = page_props.get("raceLogo", {})
-        if race_logo:
-            logo_img = race_logo.get("light") or race_logo.get("dark")
-            if logo_img:
-                pub_id = logo_img.get("publicId")
-                fmt = logo_img.get("format", "png")
-                if pub_id:
-                    logo_url = f"https://res.cloudinary.com/utmb-world/image/upload/f_auto,q_auto/{quote(pub_id)}.{fmt}"
+        # raceLogo is only filled in for races that own a dedicated logo (UTMB
+        # Mont-Blanc); World Series events leave it null and carry the event
+        # logo on the event itself, so fall back to that rather than show none.
+        race_logo = page_props.get("raceLogo") or {}
+        event = page_props.get("event") or {}
+        logo_url = (
+            _cloudinary_image_url(race_logo.get("light"))
+            or _cloudinary_image_url(race_logo.get("dark"))
+            or _cloudinary_image_url(event.get("siteLogo"))
+            or _cloudinary_image_url(event.get("siteLogoDark"))
+        )
         
+        # start_date stays human-readable for the race card; startDateIso is the
+        # only machine-readable start UTMB publishes, and the course points are
+        # timed against it. Unlike the per-point cutoffDatetime it is reliable —
+        # that one still carries last edition's year on some World Series races.
         metadata = {
             "course_name": page_header.get("title") or "Custom Trail Race",
             "distance": None,
             "elevation": None,
             "start_location": None,
             "start_date": page_header.get("startDate"),
+            "start_date_iso": page_header.get("startDateIso"),
             "category": category,
             "running_stones": running_stones,
             "direct_entry": direct_entry,
@@ -120,18 +165,19 @@ def parse_utmb_next_data(html: str) -> dict:
             dist_val = dist_m / 1000.0  # Convert to km
             ele_val = pt.get("elevation", 0)
             
-            # Map Garmin icon
-            supplies = pt.get("supplies", "none")
+            # Map Garmin icon. UTMB now flags hasMedical on every staffed aid
+            # station, so testing it first would stamp a red cross on the whole
+            # course and hide the food/water distinction; supplies wins and
+            # medical only labels points that hand out nothing.
+            supplies = (pt.get("supplies") or "none").lower()
             has_medical = pt.get("hasMedical", False)
             
-            if has_medical:
-                sym = "Medical Facility"
-            elif supplies in ("food", "complete"):
-                sym = "Food"
-            elif supplies == "drink":
-                sym = "Water Source"
-            else:
-                sym = guess_waypoint_symbol(name)
+            sym = UTMB_SUPPLY_SYMBOLS.get(supplies)
+            if not sym:
+                if has_medical:
+                    sym = "Medical Facility"
+                else:
+                    sym = guess_waypoint_symbol(name)
             
             stations.append({
                 "id": f"scraped_{idx}",

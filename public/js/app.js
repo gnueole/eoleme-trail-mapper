@@ -643,6 +643,7 @@ function loadStateFromLocalStorage() {
             raceUrlInput.value = state.raceOfficialUrl;
         }
         state.raceStartDate = data.raceStartDate || null;
+        state.raceStartDateIso = data.raceStartDateIso || null;
         state.raceDirectEntry = data.raceDirectEntry || null;
         state.unit = data.unit || localStorage.getItem('preferred-unit') || 'km';
         state.mapMode = data.mapMode || 'sync';
@@ -1008,6 +1009,12 @@ async function triggerMergeDownload(format) {
     formData.append('shorten_names', shortenVal);
     formData.append('format', format);
     formData.append('unit', state.unit || 'km');
+    // Without this the injector times the course points against a hardcoded
+    // Friday, so every cutoff lands on the wrong day for a race that does not
+    // start on one. Omitted for a hand-uploaded GPX, which keeps its own times.
+    if (state.raceStartDateIso) {
+        formData.append('start_date', state.raceStartDateIso);
+    }
     
     try {
         const response = await fetch('/api/merge', {
@@ -1162,6 +1169,7 @@ btnFetch.addEventListener('click', async () => {
         state.raceLogoUrl = metadata.logo_url || null;
         state.raceOfficialUrl = url;
         state.raceStartDate = metadata.start_date || null;
+        state.raceStartDateIso = metadata.start_date_iso || null;
         state.raceDirectEntry = metadata.direct_entry || null;
 
         // Update URL query parameter in browser address bar
@@ -1320,6 +1328,7 @@ btnClearState.addEventListener('click', () => {
     state.raceLogoUrl = null;
     state.raceOfficialUrl = null;
     state.raceStartDate = null;
+    state.raceStartDateIso = null;
     state.raceDirectEntry = null;
     
     if (raceUrlInput) {

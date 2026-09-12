@@ -22,7 +22,10 @@ This ensures your Garmin Fenix, Forerunner, or Enduro device displays exact dist
 ## ✨ Features
 
 * **🔗 UTMB Race Integration**:
-  * Fetch course tables and GPX files directly from `montblanc.utmb.world` or `live.utmb.world` URLs.
+  * Fetch course tables and GPX files directly from a UTMB event race page — `montblanc.utmb.world/races/utmb`,
+    `nice.utmb.world/races/nice-100k`, and any other `*.utmb.world` World Series site.
+  * LiveTrail (`livetrail.net`) courses are supported too. `live.utmb.world` is **not** a valid source:
+    it renders its courses in the browser and exposes no aid stations to fetch — use the event race page.
   * Robust fallback parser for copy-pasted HTML tables or raw schedule text.
 * **🗺️ Interactive Mapping & Visualization**:
   * Real-time route and aid station plotting on a Leaflet-powered map.

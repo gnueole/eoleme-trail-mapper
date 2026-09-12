@@ -14,7 +14,13 @@ from garmin_course_injector import process_gpx_and_stations_data
 
 # Import split utility submodules
 from utils.security import get_version, is_safe_url, safe_urlopen
-from utils.parsers import guess_waypoint_symbol, parse_utmb_next_data, parse_livetrail_xml, convert_livetrail_js_to_gpx
+from utils.parsers import (
+    guess_waypoint_symbol,
+    is_client_rendered_next_page,
+    parse_utmb_next_data,
+    parse_livetrail_xml,
+    convert_livetrail_js_to_gpx,
+)
 
 app = FastAPI(title="Trail Mapper & GPX POI Injector Backend", version=get_version())
 
@@ -143,6 +149,7 @@ def parse_url(payload: ParseUrlRequest):
                         "elevation": f"{parsed_data['total_gain']} m D+",
                         "start_location": "LiveTrail",
                         "start_date": None,
+                        "start_date_iso": None,
                         "category": actual_course_id,
                         "running_stones": None,
                         "direct_entry": None,
@@ -186,6 +193,19 @@ def parse_url(payload: ParseUrlRequest):
         if next_data_parsed:
             return JSONResponse(content=next_data_parsed)
             
+        # live.utmb.world has moved to the Next.js App Router and loads its
+        # courses from its own API, so the HTML holds no aid stations at all.
+        # Say so instead of letting the generic scraper return an empty course.
+        if 'utmb.world' in parsed_url.netloc.lower() and is_client_rendered_next_page(html):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "This UTMB page renders its course in the browser, so it exposes no "
+                    "aid stations to fetch. Use the race page on the event site instead "
+                    "(e.g. https://montblanc.utmb.world/races/utmb)."
+                )
+            )
+            
         # Try to locate any GPX URL in the page to help the user
         gpx_link = None
         links = re.findall(r'href=["\']([^"\']+\.gpx)["\']', html, re.I)
@@ -205,7 +225,8 @@ def parse_url(payload: ParseUrlRequest):
             "distance": None,
             "elevation": None,
             "start_location": None,
-            "start_date": None
+            "start_date": None,
+            "start_date_iso": None
         }
         
         # Try to guess course name from title
@@ -322,6 +343,8 @@ def parse_url(payload: ParseUrlRequest):
             "metadata": metadata
         })
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse URL: {str(e)}")
 

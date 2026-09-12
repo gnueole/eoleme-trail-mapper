@@ -12,6 +12,7 @@ export let state = {
     raceLogoUrl: null,
     raceOfficialUrl: null,
     raceStartDate: null,
+    raceStartDateIso: null,  // machine-readable start; course point times are relative to it
     raceDirectEntry: null,
     unit: 'km', // km or mi
     mapMode: 'sync' // sync, light, dark
@@ -40,6 +41,7 @@ export function saveStateToLocalStorage() {
             raceLogoUrl: state.raceLogoUrl || null,
             raceOfficialUrl: state.raceOfficialUrl || null,
             raceStartDate: state.raceStartDate || null,
+            raceStartDateIso: state.raceStartDateIso || null,
             raceDirectEntry: state.raceDirectEntry || null,
             unit: state.unit || 'km',
             mapMode: state.mapMode || 'sync',
