@@ -28,6 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `timezonefinder` dependency: ~50MB of polygon data in the image is a poor
   trade against one dropdown.
 
+### Documentation
+
+- `README.md` had not been touched since 1.5.0 and described none of the four
+  releases since. It now covers the start picker and the timezone offset, the
+  multi-day LiveTrail handling, and how to run the tests.
+- **Its local development instructions sent you to production.** Step 3 said to
+  open `http://localhost:3040/trail-mapper/`, but that path became a permanent
+  redirect to `https://gpx.eole.me/` when the app moved to the root — so
+  following the README bounced you off your own container. Corrected, with a
+  note about the redirect.
+
 ---
 
 ## [1.5.3] - 2026-09-12
