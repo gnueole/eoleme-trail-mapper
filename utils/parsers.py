@@ -16,14 +16,23 @@ SYMBOL_KEYWORDS = {
     "Danger": ("danger", "warning", "diffic", "risk", "attention", "caillou"),
 }
 
+# Anchored at the start of a word only, never the end: the keywords above are
+# stems ("ravit" must still catch "ravitaillement", "sourc" both "source" and
+# "sources"), but a bare substring test also fired mid-word — "eau" inside
+# Plateau and Château, "cade" inside Cascade, "mont" inside Clermont — which is
+# how "Plateau de la Justice" came back as a water point.
+SYMBOL_PATTERNS = {
+    symbol: re.compile(r'\b(?:' + '|'.join(re.escape(k) for k in keywords) + r')', re.I)
+    for symbol, keywords in SYMBOL_KEYWORDS.items()
+}
+
 def guess_waypoint_symbol(name: str) -> str:
     """
     Scans a waypoint name to guess its Garmin symbol type using keyword mappings.
     Returns the mapped symbol, or 'Checkpoint' (default fallback).
     """
-    name_lower = name.lower()
-    for symbol, keywords in SYMBOL_KEYWORDS.items():
-        if any(k in name_lower for k in keywords):
+    for symbol, pattern in SYMBOL_PATTERNS.items():
+        if pattern.search(name):
             return symbol
     return "Checkpoint"
 

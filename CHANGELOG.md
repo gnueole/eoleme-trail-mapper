@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.1] - 2026-09-12
+
+### Added
+
+- **CI actually runs the tests now.** The README badge had always pointed at
+  `.github/workflows/ci.yml`, which did not exist — the only workflow was the
+  image build, and it runs no test. Nothing but a developer's laptop had ever
+  verified the suite. `ci.yml` runs pytest on Python 3.11 (matching the
+  Dockerfile) on pushes to `main` and on pull requests.
+
+### Fixed
+
+- **The scrape fetch bypassed the SSRF guard.** `/api/parse-url` fetched the
+  user-supplied URL with a bare `urllib.request.urlopen` while its three
+  siblings all used `safe_urlopen`, which is what pins the connection to the
+  validated IP and closes the TOCTOU window between the check and the fetch.
+- **A UTC offset on the start date was truncated rather than converted**, so
+  `…T08:00:00+02:00` produced course points at `08:00Z` instead of `06:00Z`.
+  UTMB supplies no offset, so nothing changes for a scraped race today; this
+  unblocks the datetime picker on the roadmap.
+- **Keyword matching fired mid-word.** `guess_waypoint_symbol` tested plain
+  substrings, so "eau" inside *Plateau* and *Château* made them water points —
+  *Plateau de la Justice* on the Nice 100K was one — "cade" inside *Cascade*
+  made it food, and "mont" inside *Clermont* made it a summit. Keywords are
+  stems, not whole words (`ravit` must still catch *ravitaillement*), so they
+  are now anchored at the start of a word only, never the end.
+- Removed a duplicated `stations`/`rows` block in `/api/parse-url` that ran the
+  same `<tr>` regex over the whole page twice.
+
+### Notes
+
+- `TODO.md` claimed all three security items were open; every one had already
+  been implemented. Reconciled, with the remaining bare `urlopen` calls
+  documented as deliberate — they post to operator-configured endpoints, and
+  the telemetry one targets `vector:8080`, which `safe_urlopen` is meant to
+  reject.
+- The race timezone stays unresolved and is now recorded as blocked rather than
+  pending: UTMB publishes none, so course points carry local wall time under a
+  `Z` suffix. It is a uniform shift, so the spacing between cutoffs is right and
+  only the absolute times are wrong.
+
+---
+
 ## [1.5.0] - 2026-09-12
 
 ### Fixed

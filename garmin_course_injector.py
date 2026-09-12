@@ -20,7 +20,7 @@ import os
 import sys
 import re
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Terminal escape sequences for TrueColor/ANSI styling
 COLOR_RESET   = "\033[0m"
@@ -424,17 +424,21 @@ def process_gpx_and_stations_data(
             'element': trkpt
         })
         
-    # Determine start date/time
+    # Determine start date/time. Course points are written with a Z suffix, so
+    # an offset-aware start is converted to UTC rather than having its offset
+    # thrown away — passing "…T08:00:00+02:00" used to yield 08:00Z, two hours
+    # out. UTMB supplies no offset at all (startDateIso is naive local wall
+    # time), so a naive value is still taken at face value: the whole course
+    # then shifts uniformly, which leaves the spacing between cutoffs correct.
     start_dt = None
     if start_date:
         try:
-            start_date_clean = start_date.split("+")[0].split("Z")[0]
-            start_dt = datetime.strptime(start_date_clean, "%Y-%m-%dT%H:%M:%S")
+            parsed = datetime.fromisoformat(start_date.strip().replace("Z", "+00:00"))
+            if parsed.tzinfo is not None:
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            start_dt = parsed
         except Exception:
-            try:
-                start_dt = datetime.fromisoformat(start_date)
-            except Exception:
-                pass
+            pass
     
     if not start_dt:
         first_pt = track_points[0] if track_points else None

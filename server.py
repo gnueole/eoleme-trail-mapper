@@ -185,7 +185,7 @@ def parse_url(payload: ParseUrlRequest):
             url,
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         )
-        with urllib.request.urlopen(req, timeout=5) as response:
+        with safe_urlopen(req, timeout=5) as response:
             html = response.read().decode('utf-8', errors='replace')
             
         # Try to parse as Next.js __NEXT_DATA__
@@ -215,10 +215,6 @@ def parse_url(payload: ParseUrlRequest):
                 base = urlparse(url)
                 gpx_link = f"{base.scheme}://{base.netloc}{gpx_link}"
         
-        # Extract table rows
-        # Very simple heuristic for aid station rows containing dist, name
-        stations = []
-        rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html, re.S)
         # Initialize metadata block for non-NextJS pages
         metadata = {
             "course_name": "Custom Trail Race",

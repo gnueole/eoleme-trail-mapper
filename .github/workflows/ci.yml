@@ -1,0 +1,32 @@
+name: CI
+
+# The README badge has always pointed at this file, but it did not exist: the
+# only workflow was the image build, which never ran a test. Pull requests are
+# covered too, so a regression is caught before it reaches main and gets built.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # Matches docker/Dockerfile, so a passing run means the image passes.
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest -q
