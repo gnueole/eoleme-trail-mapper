@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+Repository tooling only — no change to the deployed image, so the version is
+deliberately not bumped.
+
+### Changed
+
+- **Work lands on `main` directly; the deploy gate now waits for the tests.**
+  Every change today went through a pull request that only one person could
+  review — me, approving my own work. That bought nothing the commit message
+  did not already carry, and it cost: each rebase-merge minted a new SHA,
+  orphaning the local branch and forcing a `--force-with-lease` push, eight
+  times, on a branch a second agent's worktree also tracks.
+
+  The one thing the PR genuinely provided was a CI check *before* the code
+  reached `main`. `_preflight-image` only waited on workflows matching
+  `docker|image|ghcr|publish`, so `CI` was not among them: the image could
+  finish first and a deploy slip through while the tests were still running.
+  The filter now matches the test workflow too, which restores that guarantee
+  without the branch, the force-push or the ceremony.
+
+  A slow unrelated workflow — the Notion docs sync — is still ignored, which is
+  the reason this is a name match rather than "every run".
+
+---
+
 ## [1.6.0] - 2026-09-13
 
 ### Added

@@ -184,6 +184,12 @@ restart: down up
 # read:packages scope, so the image cannot be queried directly, but the run that
 # builds it can.
 #
+# It waits on the image build AND on CI. Waiting on the tests matters now that
+# work lands on main directly rather than through a pull request: without it the
+# image can finish first and a deploy slips through while the tests are still
+# running. A slow unrelated workflow — the Notion docs sync — is still ignored,
+# which is the whole reason this filter is a name match and not "every run".
+#
 # Escape hatch for a genuine emergency: make deploy ALLOW_UNSAFE=1
 _preflight-image:
 	@if [ "$(ALLOW_UNSAFE)" = "1" ]; then exit 0; fi
@@ -198,8 +204,8 @@ _preflight-image:
 		printf "   Push it and let the image build, or ALLOW_UNSAFE=1 to ship the previous image.\n"; \
 		exit 1; \
 	fi; \
-	pending=$$(gh run list --commit $$sha --json workflowName,status --jq '[.[] | select(.workflowName | test("docker|image|ghcr|publish"; "i")) | select(.status != "completed")] | length'); \
-	imgtotal=$$(gh run list --commit $$sha --json workflowName --jq '[.[] | select(.workflowName | test("docker|image|ghcr|publish"; "i"))] | length'); \
+	pending=$$(gh run list --commit $$sha --json workflowName,status --jq '[.[] | select(.workflowName | test("docker|image|ghcr|publish|\\bci\\b|test"; "i")) | select(.status != "completed")] | length'); \
+	imgtotal=$$(gh run list --commit $$sha --json workflowName --jq '[.[] | select(.workflowName | test("docker|image|ghcr|publish|\\bci\\b|test"; "i"))] | length'); \
 	if [ "$$imgtotal" = "0" ]; then \
 		pending=$$(gh run list --commit $$sha --json status --jq '[.[] | select(.status != "completed")] | length'); \
 	fi; \
