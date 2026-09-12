@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.3] - 2026-09-12
+
+### Fixed
+
+- **Segmented LiveTrail courses could not be downloaded at all.** LiveTrail
+  writes its track either flat (`p_<id>[i] = [lat, lon]`) or split into legs
+  (`p_<id>[seg][i] = [lat, lon]`). Only the flat form was matched, so a
+  multi-leg race found no coordinates and `/api/download-gpx` answered
+  `400 Failed to parse coordinate track array`. SaintéLyon's 160km is two legs
+  and 7,763 points; it now converts, with the legs joined in order.
+
+- **A LiveTrail race longer than a day placed its checkpoints on the wrong
+  one.** Times arrive as `DD-HH:MM`, but the day was discarded and the fallback
+  could only roll over by a single day — so on a three-day race a checkpoint at
+  `21-09:00` landed back on the 19th, 48 hours early. The day of month is now
+  walked in course order and the rollovers counted, which is exact for any
+  length and survives a race crossing the end of a month, unlike subtracting the
+  two numbers. Formats without the prefix, UTMB's `Fri 07:45 PM` included, still
+  take the weekday path.
+
+### Notes
+
+- The LiveTrail integration had never been exercised in this repository — no
+  test covered it and no live run had touched it. Both bugs above were found by
+  running the real `templiers` and `saintelyon` instances end to end, which is
+  now the thing the new tests pin down.
+- Still open there: LiveTrail publishes no month or year, so its courses have no
+  absolute anchor and fall back to the injector's placeholder date. Relative
+  spacing is exact, which is what the watch uses.
+
+---
+
 ## [1.5.2] - 2026-09-12
 
 ### Security

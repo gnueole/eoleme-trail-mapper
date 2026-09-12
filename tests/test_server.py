@@ -375,6 +375,55 @@ def test_untrusted_host_rejected_when_dns_fails(monkeypatch):
     assert security.is_safe_url("https://example.com") is False
 
 
+def test_livetrail_js_handles_segmented_tracks():
+    """
+    LiveTrail writes the track flat, p_<id>[i], or split into legs,
+    p_<id>[seg][i]. SaintéLyon's 160km is the second shape; matching only the
+    flat form found no coordinates and failed the whole GPX download.
+    """
+    from utils.parsers import convert_livetrail_js_to_gpx
+
+    flat = ('var p_Templi=[];'
+            'p_Templi[0]=[44.11460,3.08683];p_Templi[1]=[44.11474,3.08690];')
+    gpx = convert_livetrail_js_to_gpx(flat, "Templi")
+    assert gpx.count("<trkpt") == 2
+    assert 'lat="44.1146"' in gpx
+
+    # Two legs, deliberately out of order in the source, must join end to end
+    segmented = ('var p_160km=[];p_160km[1]=[];p_160km[2]=[];'
+                 'p_160km[2][0]=[45.44444,4.44444];'
+                 'p_160km[1][0]=[45.72979,4.82499];'
+                 'p_160km[1][1]=[45.72982,4.82476];')
+    gpx = convert_livetrail_js_to_gpx(segmented, "160km")
+    assert gpx.count("<trkpt") == 3
+    order = re.findall(r'lat="([\d.]+)"', gpx)
+    assert order == ["45.72979", "45.72982", "45.44444"]
+
+
+def test_livetrail_day_of_month_survives_a_multi_day_race():
+    """
+    'DD-HH:MM' carries the day but no month, and the old fallback could only
+    ever roll over by one day — so a checkpoint two days in, at a time of day
+    later than the start, collapsed back onto the start day.
+    """
+    from datetime import datetime
+    from garmin_course_injector import livetrail_day_of_month, resolve_cutoff_time
+
+    assert livetrail_day_of_month("30-05:09") == 30
+    assert livetrail_day_of_month("19-05:10") == 19
+    # Other formats must fall through to the weekday logic untouched
+    assert livetrail_day_of_month("Fri 07:45 PM") is None
+    assert livetrail_day_of_month("05:10") is None
+    assert livetrail_day_of_month("") is None
+
+    start = datetime(2026, 10, 19, 5, 10)
+    # Without an offset the third day folds back onto the first
+    assert resolve_cutoff_time("21-09:00", start) == datetime(2026, 10, 19, 9, 0)
+    # Counting rollovers puts it where it belongs
+    assert resolve_cutoff_time("21-09:00", start, day_offset=2) == datetime(2026, 10, 21, 9, 0)
+    assert resolve_cutoff_time("20-08:00", start, day_offset=1) == datetime(2026, 10, 20, 8, 0)
+
+
 def test_merge_endpoint_size_limit():
     large_gpx = "A" * (6 * 1024 * 1024)  # 6MB
     stations = []
