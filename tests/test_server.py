@@ -272,6 +272,60 @@ def test_parse_utmb_next_data_ignores_app_router_page():
     ) is False
 
 
+def test_guess_waypoint_symbol_matches_whole_words_only():
+    """Keywords are stems, but must start on a word boundary, not mid-word."""
+    from utils.parsers import guess_waypoint_symbol
+
+    # Stems still match the longer words they were written for
+    assert guess_waypoint_symbol("Ravitaillement 1") == "Food"
+    assert guess_waypoint_symbol("Sources chaudes") == "Water Source"
+    assert guess_waypoint_symbol("Secteur difficile") == "Danger"
+    assert guess_waypoint_symbol("Sanitaires") == "Toilet"
+    assert guess_waypoint_symbol("Point d'eau") == "Water Source"
+    assert guess_waypoint_symbol("Mont Blanc") == "Summit"
+
+    # ...but no longer fire from inside an unrelated word
+    assert guess_waypoint_symbol("Plateau de la Justice") == "Checkpoint"
+    assert guess_waypoint_symbol("Chateau Vieux") == "Checkpoint"
+    assert guess_waypoint_symbol("Cascade") == "Checkpoint"
+    assert guess_waypoint_symbol("Clermont") == "Checkpoint"
+
+
+def test_merge_honours_start_date_utc_offset():
+    """
+    Course points are written with a Z suffix, so an offset-aware start has to
+    be converted rather than truncated. UTMB itself publishes no offset, but a
+    caller that supplies one must not be silently shifted by it.
+    """
+    aware = _merge_with_start_date("2026-09-26T08:00:00+02:00")
+    assert aware[0] == "2026-09-26T06:00:00Z"
+
+    # Z is equivalent to a naive value at the same wall clock
+    assert _merge_with_start_date("2026-09-26T08:00:00Z")[0] == "2026-09-26T08:00:00Z"
+    assert _merge_with_start_date("2026-09-26T08:00:00")[0] == "2026-09-26T08:00:00Z"
+
+
+def test_parse_url_uses_ssrf_safe_fetch(monkeypatch):
+    """The scrape fetch must go through safe_urlopen like every other fetch."""
+    import server
+
+    calls = []
+
+    def _fail(*args, **kwargs):
+        raise AssertionError("raw urlopen bypassed the SSRF guard")
+
+    def _fake_safe(req, *args, **kwargs):
+        calls.append(getattr(req, "full_url", req))
+        raise ValueError("blocked in test")
+
+    monkeypatch.setattr(server.urllib.request, "urlopen", _fail)
+    monkeypatch.setattr(server, "safe_urlopen", _fake_safe)
+
+    response = client.post("/api/parse-url", json={"url": "https://montblanc.utmb.world/races/utmb"})
+    assert calls == ["https://montblanc.utmb.world/races/utmb"]
+    assert response.status_code == 500
+
+
 def test_merge_endpoint_size_limit():
     large_gpx = "A" * (6 * 1024 * 1024)  # 6MB
     stations = []

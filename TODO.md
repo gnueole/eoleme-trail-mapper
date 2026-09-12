@@ -9,12 +9,21 @@ This document maintains the active task list, security mitigations, and feature 
 
 ## 🔒 Security Enhancements
 Tasks identified during the **Security Assessment**
-- [ ] **Mitigate DNS Rebinding (SSRF)**:
-  - Modify `server.py` to bind HTTP requests in `urlopen` directly to the resolved IP address validated in `is_safe_url()`. Pass the original domain name in the `Host` header to prevent TOCTOU exploitation.
-- [ ] **Enforce Upload Limits on Merge Endpoint**:
-  - Add an explicit file size check (e.g. 5MB) on the `UploadFile` stream in `/api/merge` to prevent memory exhaustion from massive file uploads.
-- [ ] **HTTP Requests Timeout**:
-  - Enforce strict socket-level read timeouts on all proxy fetches to prevent backend resource leaks from slow HTTP responses.
+- [x] **Mitigate DNS Rebinding (SSRF)**:
+  - `utils/security.py::safe_urlopen` resolves the host, rejects private/reserved
+    addresses and pins the connection to the validated IP. Every fetch of a
+    *user-supplied* URL now goes through it — the scrape fetch in
+    `/api/parse-url` was the last holdout.
+  - The two remaining bare `urlopen` calls (the n8n parser webhook and the
+    telemetry post) target operator-configured endpoints, and the telemetry one
+    is the internal `vector:8080`, which `safe_urlopen` is *supposed* to reject.
+    They stay raw on purpose.
+- [x] **Enforce Upload Limits on Merge Endpoint**:
+  - `/api/merge` rejects payloads over 5MB; covered by
+    `test_merge_endpoint_size_limit`.
+- [x] **HTTP Requests Timeout**:
+  - Every proxy fetch passes an explicit `timeout=` (2s telemetry, 5s scrape and
+    GPX, 10s LiveTrail and n8n).
 
 ---
 
@@ -24,8 +33,21 @@ Tasks identified during the **Security Assessment**
 - [ ] Add support for importing routes directly from Strava routes/activities via the Strava API.
 
 ### 2. Timezone and Race Start Calibration
+- [x] Anchor the course points to the real race start. `pageHeader.startDateIso`
+  now reaches `/api/merge`; before this the injector fell back to a hardcoded
+  Friday and every cutoff on a non-Friday race landed a day out.
+- [x] Honour a UTC offset when the start date carries one — it used to be
+  truncated, so `…T08:00:00+02:00` was written as `08:00Z`.
 - [ ] Add a UI datetime picker to allow custom start date/time adjustments for the race track.
-- [ ] Automatically extract the race start timezone from the UTMB scrape properties and apply it during GPX timestamp interpolation.
+- [ ] **Blocked — UTMB publishes no timezone.** Every ISO string in
+  `__NEXT_DATA__` is naive local wall time; the props carry only
+  `event.region` ("Europe") and `event.lat`/`event.lng`. Course points are
+  therefore written with local wall time under a `Z` suffix, a *uniform* shift
+  (2h for Chamonix and Nice in summer) that leaves the spacing between cutoffs
+  correct but the absolute times wrong. Closing this needs either a
+  coordinates→IANA-zone dependency such as `timezonefinder` (~50MB of polygon
+  data in the image, for a display-only error) or the datetime picker above
+  supplying the offset by hand. Worth deciding which before either is built.
 
 ### 3. Checkpoints Table Improvements
 - [ ] Add multi-select checkboxes for batch actions (e.g., toggle active state, delete multiple).
