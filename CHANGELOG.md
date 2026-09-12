@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.2] - 2026-09-12
+
+### Security
+
+- **The trusted-domain allow-list matched bare string suffixes.**
+  `"evilgoogle.com".endswith("google.com")` is `True`, so registering such a
+  name was enough to be treated as trusted — as was `notutmb.world`.
+  `is_trusted_domain` now matches a domain or one of its subdomains.
+
+- **Trust skipped SSRF validation entirely, including for the app's own
+  traffic.** Both `is_safe_url` and `safe_urlopen` returned early for a trusted
+  host *before* resolving and *before* pinning, so `*.utmb.world` — where
+  essentially all of this service's requests go — had no protection at all. The
+  allow-list exists for offline/DNS-restricted development, so it is now
+  reached only when resolution actually fails. Every host that resolves is
+  IP-checked and pinned, trusted or not.
+
+- **A wall-clock ceiling on remote transfers.** `urllib`'s `timeout=` applies
+  per socket operation, not per transfer, so a server dripping bytes just inside
+  the 5s window could hold a worker indefinitely. `MAX_TRANSFER_SECONDS` bounds
+  the whole `/api/download-gpx` read loop and returns `504`.
+
+- **`/api/merge` enforces its size cap during the read.** It previously ran
+  `await gpx_file.read()` and measured afterwards, so an oversized body was
+  fully received before rejection; it now reads in 1MB chunks and stops at the
+  cap.
+
+`SECURITY_ASSESSMENT.md` records all of this, and its remaining open item is now
+just the absence of a proxy-level body cap.
+
+---
+
 ## [1.5.1] - 2026-09-12
 
 ### Added
