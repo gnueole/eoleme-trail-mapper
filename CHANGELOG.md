@@ -38,6 +38,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Notes
 
+- **`SECURITY_ASSESSMENT.md` documented two mitigated risks as open**, including
+  a Medium-severity DNS rebinding hole with a code snippet recommending the very
+  fix `safe_urlopen` already implements. A reader would have concluded the
+  service ships an unpatched SSRF. Both are moved to a Resolved table, and the
+  SSRF section now describes the pinning layer rather than only `is_safe_url`.
+
+  Three residual risks are recorded honestly in their place: `urllib`'s timeout
+  is per socket operation, so it does not bound a slow-drip transfer; the
+  trusted-suffix allow-list skips resolution *and* pinning entirely, so
+  `*.utmb.world` gets no SSRF protection at all; and `/api/merge` checks its
+  size limit after `await gpx_file.read()`, so the body is received before it is
+  rejected — the doc's own earlier recommendation had that same gap.
+
 - `TODO.md` claimed all three security items were open; every one had already
   been implemented. Reconciled, with the remaining bare `urlopen` calls
   documented as deliberate — they post to operator-configured endpoints, and
