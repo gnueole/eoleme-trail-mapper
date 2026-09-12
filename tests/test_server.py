@@ -2,6 +2,7 @@ import pytest
 import io
 import json
 import re
+import socket
 from fastapi.testclient import TestClient
 from server import app, is_safe_url
 
@@ -324,6 +325,54 @@ def test_parse_url_uses_ssrf_safe_fetch(monkeypatch):
     response = client.post("/api/parse-url", json={"url": "https://montblanc.utmb.world/races/utmb"})
     assert calls == ["https://montblanc.utmb.world/races/utmb"]
     assert response.status_code == 500
+
+
+def test_trusted_domain_matching_is_not_a_bare_suffix():
+    """
+    "evilgoogle.com".endswith("google.com") is True, so the old suffix test gave
+    the allow-list to anyone who registered such a name.
+    """
+    from utils.security import is_trusted_domain
+
+    assert is_trusted_domain("utmb.world") is True
+    assert is_trusted_domain("montblanc.utmb.world") is True
+    assert is_trusted_domain("MONTBLANC.UTMB.WORLD") is True
+    assert is_trusted_domain("github.com") is True
+
+    assert is_trusted_domain("evilgoogle.com") is False
+    assert is_trusted_domain("notutmb.world") is False
+    assert is_trusted_domain("utmb.world.attacker.net") is False
+    assert is_trusted_domain("") is False
+
+
+def test_trusted_domain_still_validated_when_it_resolves(monkeypatch):
+    """
+    The allow-list is a fallback for unresolvable hosts, not a way to skip the
+    IP check: a trusted name pointing at loopback must still be refused.
+    """
+    import utils.security as security
+
+    def _resolve_to_loopback(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('127.0.0.1', 0))]
+
+    monkeypatch.setattr(security, "_original_getaddrinfo", _resolve_to_loopback)
+    assert security.is_safe_url("https://montblanc.utmb.world/races/utmb") is False
+
+    with pytest.raises(ValueError) as exc:
+        security.safe_urlopen("https://montblanc.utmb.world/races/utmb")
+    assert "private/reserved" in str(exc.value)
+
+
+def test_untrusted_host_rejected_when_dns_fails(monkeypatch):
+    """An unresolvable host gets the allow-list treatment only if it is on it."""
+    import utils.security as security
+
+    def _no_dns(host, port, *args, **kwargs):
+        raise socket.gaierror("name resolution disabled")
+
+    monkeypatch.setattr(security, "_original_getaddrinfo", _no_dns)
+    assert security.is_safe_url("https://montblanc.utmb.world") is True
+    assert security.is_safe_url("https://example.com") is False
 
 
 def test_merge_endpoint_size_limit():

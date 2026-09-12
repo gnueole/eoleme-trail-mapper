@@ -1,6 +1,7 @@
 import os
 import socket
 import ipaddress
+import time
 import urllib.request
 import json
 import re
@@ -21,6 +22,10 @@ from utils.parsers import (
     parse_livetrail_xml,
     convert_livetrail_js_to_gpx,
 )
+
+# Wall-clock ceiling on a whole remote transfer, on top of the per-read socket
+# timeout, so a slow-drip server cannot hold a worker open indefinitely.
+MAX_TRANSFER_SECONDS = 30
 
 app = FastAPI(title="Trail Mapper & GPX POI Injector Backend", version=get_version())
 
@@ -83,7 +88,11 @@ def download_gpx(payload: DownloadGpxRequest):
             if content_length and int(content_length) > 5 * 1024 * 1024:
                 raise HTTPException(status_code=400, detail="GPX file size exceeds the 5MB limit.")
             
+            # urllib's timeout is per socket operation, so a server dripping
+            # bytes just inside it can hold the worker indefinitely. Bound the
+            # whole transfer, not just each individual read.
             chunk_size = 1024 * 1024
+            deadline = time.monotonic() + MAX_TRANSFER_SECONDS
             content = b""
             while True:
                 chunk = response.read(chunk_size)
@@ -92,6 +101,8 @@ def download_gpx(payload: DownloadGpxRequest):
                 content += chunk
                 if len(content) > 5 * 1024 * 1024:
                     raise HTTPException(status_code=400, detail="GPX file size limit exceeded during transfer.")
+                if time.monotonic() > deadline:
+                    raise HTTPException(status_code=504, detail="GPX download exceeded the transfer time limit.")
             
             # Safe XML Validation
             try:
@@ -360,11 +371,18 @@ async def merge_data(
         # Load and validate stations json
         stations_list = json.loads(stations_json)
         
-        # Read uploaded GPX bytes with 5MB size limit
+        # Read the upload in bounded chunks and stop at the cap, rather than
+        # reading the whole body first and measuring it afterwards — the limit
+        # should bound what the process accepts, not just what the parser sees.
         MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB limit
-        gpx_bytes = await gpx_file.read()
-        if len(gpx_bytes) > MAX_FILE_SIZE:
-            raise HTTPException(status_code=400, detail="File size exceeds the 5MB limit.")
+        gpx_bytes = b""
+        while True:
+            chunk = await gpx_file.read(1024 * 1024)
+            if not chunk:
+                break
+            gpx_bytes += chunk
+            if len(gpx_bytes) > MAX_FILE_SIZE:
+                raise HTTPException(status_code=400, detail="File size exceeds the 5MB limit.")
         
         # Safe XML Validation via defusedxml
         try:
