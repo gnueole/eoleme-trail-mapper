@@ -292,10 +292,27 @@ def fetch_aid_stations(url):
 # 3. CORE PROCESSING LOGIC
 # ==========================================
 
-def resolve_cutoff_time(time_str, start_dt):
+def livetrail_day_of_month(time_str):
+    """
+    LiveTrail writes its checkpoint times as 'DD-HH:MM' (e.g. '30-05:09').
+    Returns the leading day of month, or None for any other format.
+    """
+    match = re.match(r'\s*(\d{1,2})\s*-\s*\d{1,2}[:h]\d{2}', time_str or '')
+    return int(match.group(1)) if match else None
+
+
+def resolve_cutoff_time(time_str, start_dt, day_offset=None):
+    """
+    Resolves a checkpoint time string against the race start.
+
+    day_offset, when given, is how many calendar days after the start this
+    checkpoint falls, counted by the caller. It takes precedence over guessing,
+    which is what LiveTrail needs: its 'DD-HH:MM' carries the day but no month
+    or year, and the fallback below can only ever roll over by one day.
+    """
     if not time_str or not start_dt:
         return None
-        
+
     time_str_lower = time_str.strip().lower()
     
     # Map weekdays in French and English
@@ -328,8 +345,12 @@ def resolve_cutoff_time(time_str, start_dt):
     elif 'am' in time_str_lower and hours == 12:
         hours = 0
         
+    if day_offset is not None:
+        return (start_dt.replace(hour=hours, minute=minutes, second=0, microsecond=0)
+                + timedelta(days=day_offset))
+
     w_start = start_dt.weekday()
-    
+
     if w_cutoff is not None:
         diff_days = w_cutoff - w_start
         if diff_days < 0:
@@ -452,14 +473,30 @@ def process_gpx_and_stations_data(
     if not start_dt:
         start_dt = base_time
 
-    # Prepare aid stations
+    # Prepare aid stations. LiveTrail stamps each checkpoint with a day of
+    # month, so walk the list in course order and count the rollovers: that
+    # gives an exact day offset for a race of any length, and survives a race
+    # crossing the end of a month, which subtracting the two numbers would not.
     aid_stations = []
+    previous_day = None
+    day_offset = None
     for station in stations_source:
+        day_of_month = livetrail_day_of_month(station.get('time', ''))
+        if day_of_month is None:
+            day_offset = None
+        else:
+            if day_offset is None:
+                day_offset = 0
+            elif day_of_month != previous_day:
+                day_offset += 1
+            previous_day = day_of_month
+
         aid_stations.append({
             'name': station['name'],
             'official_dist': station['dist'],
             'symbol': station['symbol'],
-            'time_raw': station.get('time', '')
+            'time_raw': station.get('time', ''),
+            'day_offset': day_offset
         })
 
     # Determine official total distance
@@ -488,7 +525,9 @@ def process_gpx_and_stations_data(
         
         resolved_time = None
         if station['time_raw']:
-            resolved_time = resolve_cutoff_time(station['time_raw'], start_dt)
+            resolved_time = resolve_cutoff_time(
+                station['time_raw'], start_dt, day_offset=station.get('day_offset')
+            )
         
         matched_stations.append({
             'name': station['name'],

@@ -311,24 +311,29 @@ def convert_livetrail_js_to_gpx(js_content: str, course_id: str) -> str:
     and constructs a standard GPX file.
     """
     try:
-        # Regex to find p_<course_id>[idx] = [lat, lon]
-        pattern = r'p_' + re.escape(course_id) + r'\[(\d+)\]\s*=\s*\[\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*\]'
-        matches = re.findall(pattern, js_content)
-        
-        if not matches:
-            # Try case insensitive fallback
-            pattern_ci = r'p_' + re.escape(course_id) + r'\[(\d+)\]\s*=\s*\[\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*\]'
-            matches = re.findall(pattern_ci, js_content, re.I)
-            
-        if not matches:
-            # Try finding any coordinate array pattern
-            pattern_any = r'p_[a-zA-Z0-9_]+\[(\d+)\]\s*=\s*\[\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*\]'
-            matches = re.findall(pattern_any, js_content)
-            
+        # LiveTrail writes the track either flat — p_<id>[i] = [lat, lon] — or
+        # split into legs, p_<id>[seg][i] = [lat, lon]. SaintéLyon's 160km is
+        # the second shape (two legs, ~7.8k points); matching only the flat form
+        # found nothing there and failed the whole download.
+        coords = r'\]\s*=\s*\[\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*\]'
+        named = r'p_' + re.escape(course_id) + r'\[(\d+)(?:\]\[(\d+))?' + coords
+        any_course = r'p_[a-zA-Z0-9_]+\[(\d+)(?:\]\[(\d+))?' + coords
+
+        matches = (re.findall(named, js_content)
+                   or re.findall(named, js_content, re.I)
+                   or re.findall(any_course, js_content))
+
         if not matches:
             return None
-            
-        pts = sorted([(int(idx), float(lat), float(lon)) for idx, lat, lon in matches], key=lambda x: x[0])
+
+        # A flat file leaves the second index empty, so it is all one segment;
+        # a segmented file sorts by leg first so the legs join end to end.
+        ordered = sorted(
+            (int(first), int(second), float(lat), float(lon)) if second
+            else (0, int(first), float(lat), float(lon))
+            for first, second, lat, lon in matches
+        )
+        pts = [(lat, lon) for _, _, lat, lon in ordered]
         
         gpx_lines = [
             '<?xml version="1.0" encoding="UTF-8"?>',
@@ -340,7 +345,7 @@ def convert_livetrail_js_to_gpx(js_content: str, course_id: str) -> str:
             f'    <name>{course_id}</name>',
             '    <trkseg>'
         ]
-        for _, lat, lon in pts:
+        for lat, lon in pts:
             gpx_lines.append(f'      <trkpt lat="{lat}" lon="{lon}"></trkpt>')
         gpx_lines.extend([
             '    </trkseg>',
