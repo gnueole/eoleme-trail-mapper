@@ -30,3 +30,9 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
+
+      # The frontend had no tests at all until a ReferenceError in the elevation
+      # chart's hover path turned out to have been live for months. node:test is
+      # built in, so this needs no install step and no devDependency.
+      - name: Run frontend tests
+        run: node --test tests/js/*.test.js

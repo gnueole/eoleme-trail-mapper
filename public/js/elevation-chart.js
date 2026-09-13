@@ -151,7 +151,10 @@ export function drawElevationProfile() {
         ctx.arc(hX, hY, 5, 0, 2 * Math.PI);
         ctx.fillStyle = '#ffffff';
         ctx.fill();
-        ctx.strokeStyle = hexColor;
+        // hexColor was never defined — a ReferenceError here aborted the render
+        // before the readout below, so the hover label never appeared. The ring
+        // is meant to match the track line.
+        ctx.strokeStyle = theme.color;
         ctx.lineWidth = 1.5;
         ctx.stroke();
         

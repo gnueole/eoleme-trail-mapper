@@ -7,12 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [1.6.1] - 2026-09-13
 
-Repository tooling only — no change to the deployed image, so the version is
-deliberately not bumped.
+### Fixed
+
+- **The elevation chart's hover readout had never rendered.**
+  `elevation-chart.js:154` assigned `ctx.strokeStyle = hexColor`, and `hexColor`
+  was not defined anywhere — it appeared exactly once in the codebase, at that
+  line. ES modules are strict, so every `mousemove` threw
+  `ReferenceError: hexColor is not defined` *part-way through the frame*: the
+  crosshair and the dot drew, then it aborted, so the `"9.1km | 1400m"` label
+  below it never appeared. The README has been advertising "interactive
+  cross-hair hover tracking" for that whole time. The ring now takes
+  `theme.color`, matching the track line it was plainly meant to match.
+
+### Added
+
+- **Frontend tests, on `node:test`.** There was no JS test tooling at all —
+  `package.json` had no test script and no devDependencies, and CI ran `pytest`
+  only, so not one line of the frontend had ever been executed outside a
+  browser. That is precisely how the above survived.
+
+  Four tests cover the chart's render path (empty track, no hover, hover, hover
+  in light theme) against a stub canvas. They were written *before* the fix and
+  observed to fail with the real `ReferenceError` — a regression test never seen
+  red proves nothing.
+
+  `node:test` is built in, so this adds no dependency: `make test-js`, and a
+  step in `ci.yml`. It runs on the host rather than in the container, because
+  the image is `python:3.11-slim` and has no Node.
+
+- `"type": "module"` in `package.json`. Every `.js` here is a browser ES module
+  and none is CommonJS, so declaring it is simply accurate — and it stops Node
+  reparsing each file with a warning.
 
 ### Changed
+
 
 - **Work lands on `main` directly; the deploy gate now waits for the tests.**
   Every change today went through a pull request that only one person could
@@ -30,6 +60,16 @@ deliberately not bumped.
 
   A slow unrelated workflow — the Notion docs sync — is still ignored, which is
   the reason this is a name match rather than "every run".
+
+### Notes
+
+- The categorical palette is **not** fixed here. `getSymbolColor` fails
+  validation — Shelter `#b45309` against Medical `#ef4444` is ΔE 5.6 for
+  protanopia and 12.5 even with normal vision, and across the full set Toilet
+  `#8b5cf6` against Summit `#a855f7` is ΔE 0.3. There is also no legend, so hue
+  is the only encoding. It lives in `map-utils.js` and is shared with the Leaflet
+  markers, and choosing a validated replacement is a design decision rather than
+  a bug fix, so it is deliberately left for its own change.
 
 ---
 

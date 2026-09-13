@@ -56,7 +56,7 @@ COMPOSE_DEV  := $(DOCKER_DIR)/docker-compose.yml
 COMPOSE_PROD := $(DOCKER_DIR)/docker-compose.prod.yml
 DOCKER_SERVICES := trail-mapper
 
-.PHONY: help configure dev up down restart test setup-test test-local deploy _deploy deploy-delay checklogs check-build check-build-full
+.PHONY: help configure dev up down restart test test-js setup-test test-local deploy _deploy deploy-delay checklogs check-build check-build-full
 
 # ──────────────────────────────────────────────────────────────────────────────
 # ℹ️ HELP MENU
@@ -76,7 +76,8 @@ help:
 	@printf "    $(STYLE_INSTRUCTION)make restart$(RESET)              $(STYLE_DISCREET)•$(RESET) Restart local dev Docker containers\n"
 	@printf "\n"
 	@printf "  $(BOLD)$(STYLE_SECTION)❯ Testing & Verification:$(RESET)\n"
-	@printf "    $(STYLE_INSTRUCTION)make test$(RESET)                 $(STYLE_DISCREET)•$(RESET) Run test suite inside Docker container\n"
+	@printf "    $(STYLE_INSTRUCTION)make test$(RESET)                 $(STYLE_DISCREET)•$(RESET) Run Python test suite inside Docker container\n"
+	@printf "    $(STYLE_INSTRUCTION)make test-js$(RESET)              $(STYLE_DISCREET)•$(RESET) Run frontend tests on the host (node:test)\n"
 	@printf "    $(STYLE_INSTRUCTION)make setup-test$(RESET)           $(STYLE_DISCREET)•$(RESET) Create local Python venv for testing\n"
 	@printf "    $(STYLE_INSTRUCTION)make test-local$(RESET)           $(STYLE_DISCREET)•$(RESET) Run test suite locally using virtual env\n"
 	@printf "\n"
@@ -292,6 +293,16 @@ setup-test:
 	fi
 	@printf "$(STYLE_RESULT)✅ Test environment set up successfully!$(RESET)\n"
 	@printf "👉 Run tests with: $(STYLE_WARNING)make test-local$(RESET)\n"
+
+# Frontend tests. node:test is built in, so this needs no devDependency and no
+# runner — which is why it exists at all: the repo ships zero JS tooling and a
+# ReferenceError in the elevation chart's hover path went unnoticed for months.
+#
+# Runs on the host, not in the container: the image is python:3.11-slim and has
+# no Node. `make test` covers Python only; CI runs both.
+test-js:
+	@printf "$(STYLE_PHASE)🧪 Running frontend tests...$(RESET)\n"
+	@node --test tests/js/*.test.js
 
 test-local:
 	@if [ -d .venv ]; then \

@@ -1,7 +1,9 @@
 {
   "name": "eoleme-trail-mapper",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "UTMB Trail Mapper & Garmin GPX POI Merger",
+  "//type": "Every .js here is a browser ES module; declaring it stops Node reparsing each one.",
+  "type": "module",
   "scripts": {
     "dev": "echo 'Static files served via Docker. Port: 3040'"
   },
