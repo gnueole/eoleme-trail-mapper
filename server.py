@@ -1,4 +1,5 @@
 import os
+import logging
 import socket
 import ipaddress
 import time
@@ -8,6 +9,7 @@ import re
 from urllib.parse import urlparse
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response, Request
 from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import defusedxml.ElementTree as DET
@@ -28,6 +30,42 @@ from utils.parsers import (
 MAX_TRANSFER_SECONDS = 30
 
 app = FastAPI(title="Trail Mapper & GPX POI Injector Backend", version=get_version())
+
+
+class _IndentedTracebackFormatter(logging.Formatter):
+    """Indents every traceback line, so Vector merges the whole trace into the
+    log line above it: its multiline rule treats a line starting with
+    whitespace as a continuation. Python's own "Traceback (most recent call
+    last):" header and final "ValueError: ..." line start at column 0, and
+    would otherwise arrive in Axiom as separate events."""
+
+    def formatException(self, ei):
+        return "\n".join("  " + line for line in super().formatException(ei).splitlines())
+
+
+_handler = logging.StreamHandler()
+_handler.setFormatter(_IndentedTracebackFormatter("%(levelname)s:    %(message)s"))
+logger = logging.getLogger("trail-mapper")
+logger.addHandler(_handler)
+logger.setLevel(logging.INFO)
+logger.propagate = False
+
+
+@app.exception_handler(HTTPException)
+async def log_server_errors(request: Request, exc: HTTPException):
+    """Every 500 here is an HTTPException raised from an `except Exception`
+    block, and uvicorn prints nothing but the access line: four 500s on
+    /api/parse-url in September 2026 left no trace of what failed. The cause is
+    the exception being handled when the HTTPException was raised. The
+    submitted URL is not logged."""
+    if exc.status_code >= 500:
+        cause = exc.__cause__ or exc.__context__
+        logger.error(
+            "%s %s answered %d: %s",
+            request.method, request.url.path, exc.status_code, exc.detail,
+            exc_info=(type(cause), cause, cause.__traceback__) if cause else None,
+        )
+    return await http_exception_handler(request, exc)
 
 # Pydantic models for request bodies
 class DownloadGpxRequest(BaseModel):

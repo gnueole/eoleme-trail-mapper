@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.2] - 2026-09-19
+
+### Fixed
+
+- **A 500 now says what failed.** `/api/parse-url` answered 500 four times
+  between 11 and 14 September, and the logs held nothing but uvicorn's access
+  line: every 500 here is an `HTTPException` raised from an `except Exception`
+  block, and nothing printed the exception being handled. A handler now logs
+  every 5xx with its cause and traceback, indented so Vector keeps the whole
+  trace in one Axiom event. The submitted URL is not logged. 4xx answers are
+  the caller's mistake and stay silent.
+
+---
+
 ## [1.6.1] - 2026-09-13
 
 ### Fixed

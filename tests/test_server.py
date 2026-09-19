@@ -458,3 +458,35 @@ def test_safe_urlopen_protection():
         safe_urlopen("http://localhost/test.gpx")
     assert "Unsafe URL" in str(exc2.value)
 
+
+
+def test_server_error_logs_its_cause(monkeypatch, capsys):
+    """A 500 must leave the failing exception in the logs, traceback indented so
+    Vector's multiline rule keeps it in one event with the error line."""
+    import server, sys
+
+    def _boom(*args, **kwargs):
+        raise ValueError("upstream went away")
+
+    monkeypatch.setattr(server, "safe_urlopen", _boom)
+    # The handler was bound to stderr at import; point it at the captured one.
+    monkeypatch.setattr(server._handler, "stream", sys.stderr)
+
+    response = client.post("/api/parse-url", json={"url": "https://montblanc.utmb.world/races/utmb"})
+    assert response.status_code == 500
+
+    err = capsys.readouterr().err
+    lines = err.splitlines()
+    assert lines[0].startswith("ERROR:    POST /api/parse-url answered 500: Failed to parse URL: upstream went away")
+    assert any("ValueError: upstream went away" in line for line in lines[1:])
+    assert all(line[:1].isspace() for line in lines[1:])
+    assert "montblanc" not in err
+
+
+def test_client_errors_are_not_logged(monkeypatch, capsys):
+    """A 4xx is the caller's mistake, not an incident: nothing is logged."""
+    import server, sys
+    monkeypatch.setattr(server._handler, "stream", sys.stderr)
+    response = client.post("/api/parse-url", json={"url": "http://127.0.0.1/"})
+    assert response.status_code == 400
+    assert "answered" not in capsys.readouterr().err
