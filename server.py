@@ -4,6 +4,7 @@ import socket
 import ipaddress
 import time
 import urllib.request
+import urllib.error
 import json
 import re
 from urllib.parse import urlparse
@@ -51,20 +52,145 @@ logger.setLevel(logging.INFO)
 logger.propagate = False
 
 
+class ApiError(HTTPException):
+    """A failure the client can act on, answered as
+    {"error": {"code", "source", "source_url", "upstream_status", "message"}}
+    (plus "detail" = message, which older callers read).
+
+    `code` tells the frontend what to say; `source` names the third party when
+    the failure is theirs ("livetrail", "utmb", or the host); `upstream_status`
+    is their HTTP status when there was one. `message` is safe to show: it never
+    carries an exception text or a path. What caused it goes to the logs through
+    the handler below, never to the response.
+    """
+
+    def __init__(self, status_code, code, message, source=None, upstream_status=None,
+                 source_url=None, log_detail=None):
+        super().__init__(status_code=status_code, detail=message)
+        self.code = code
+        self.source = source
+        self.upstream_status = upstream_status
+        self.source_url = source_url
+        # What the logs get instead of `message`: the upstream URL and status,
+        # or the exception text for an internal error.
+        self.log_detail = log_detail or message
+
+    def body(self):
+        return {
+            "detail": self.detail,
+            "error": {
+                "code": self.code,
+                "source": self.source,
+                "source_url": self.source_url,
+                "upstream_status": self.upstream_status,
+                "message": self.detail,
+            },
+        }
+
+
+def _source_of(url):
+    """Names the third party behind a URL, for the error contract and the logs."""
+    host = (urlparse(url).hostname or "").lower()
+    if "livetrail.net" in host:
+        return "livetrail"
+    if "utmb.world" in host:
+        return "utmb"
+    return host or None
+
+
+def _site_of(url):
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}/" if parsed.netloc else None
+
+
+def upstream_error(exc, url, parsing=False):
+    """Turns what a third-party fetch raised into an ApiError.
+
+    The mapping is the contract the frontend relies on:
+      - the source answered 404                 -> 404 UPSTREAM_NOT_FOUND
+      - the source answered another error       -> 502 UPSTREAM_UNAVAILABLE
+      - no answer: timeout                      -> 504 UPSTREAM_TIMEOUT
+      - no answer: refused, unreachable, no DNS -> 502 UPSTREAM_UNAVAILABLE
+      - an answer we could not read             -> 502 UPSTREAM_FORMAT_CHANGED
+      - the URL itself is refused               -> 400 INVALID_URL
+    Anything else is ours: 500 INTERNAL_ERROR, logged as an error with its
+    traceback, where the upstream ones are warnings.
+    """
+    source = _source_of(url)
+    kwargs = dict(source=source, source_url=_site_of(url))
+
+    if parsing:
+        return ApiError(502, "UPSTREAM_FORMAT_CHANGED",
+                        "The source answered, but not in the format this tool expects.",
+                        log_detail=f"{source} answered {url} with data that could not be parsed: {exc}",
+                        **kwargs)
+    if isinstance(exc, urllib.error.HTTPError):
+        status = exc.code
+        if status == 404:
+            return ApiError(404, "UPSTREAM_NOT_FOUND", "The source has no data at this address.",
+                            upstream_status=status, log_detail=f"{source} answered {status} for {url}",
+                            **kwargs)
+        return ApiError(502, "UPSTREAM_UNAVAILABLE", "The source answered with an error.",
+                        upstream_status=status, log_detail=f"{source} answered {status} for {url}",
+                        **kwargs)
+    timed_out = isinstance(exc, (socket.timeout, TimeoutError)) or (
+        isinstance(exc, urllib.error.URLError) and isinstance(exc.reason, (socket.timeout, TimeoutError)))
+    if timed_out:
+        return ApiError(504, "UPSTREAM_TIMEOUT", "The source did not answer in time.",
+                        log_detail=f"{source} timed out for {url}: {exc}", **kwargs)
+    if isinstance(exc, (urllib.error.URLError, ConnectionError, OSError)):
+        return ApiError(502, "UPSTREAM_UNAVAILABLE", "The source could not be reached.",
+                        log_detail=f"{source} unreachable for {url}: {exc}", **kwargs)
+    if isinstance(exc, ValueError):
+        # safe_urlopen refuses what it cannot vouch for
+        text = str(exc).lower()
+        if "resolve" in text:
+            return ApiError(502, "UPSTREAM_UNAVAILABLE", "The source's address could not be resolved.",
+                            log_detail=f"{source} did not resolve for {url}: {exc}", **kwargs)
+        if "unsafe" in text or "scheme" in text or "hostname" in text:
+            return ApiError(400, "INVALID_URL", "This URL cannot be fetched.",
+                            log_detail=f"refused a URL: {exc}")
+    # Ours. The submitted URL is deliberately left out of the log line.
+    return ApiError(500, "INTERNAL_ERROR", "Something went wrong on our side.",
+                    log_detail=f"{type(exc).__name__}: {exc}")
+
+
+def fetch_upstream(req, timeout):
+    """safe_urlopen with every failure translated by upstream_error. Returns the
+    response; callers read it themselves, since what counts as a parse failure
+    differs per endpoint."""
+    url = req.full_url if isinstance(req, urllib.request.Request) else req
+    try:
+        return safe_urlopen(req, timeout=timeout)
+    except ApiError:
+        raise
+    except Exception as exc:
+        raise upstream_error(exc, url) from exc
+
+
 @app.exception_handler(HTTPException)
 async def log_server_errors(request: Request, exc: HTTPException):
     """Every 500 here is an HTTPException raised from an `except Exception`
     block, and uvicorn prints nothing but the access line: four 500s on
     /api/parse-url in September 2026 left no trace of what failed. The cause is
-    the exception being handled when the HTTPException was raised. The
-    submitted URL is not logged."""
-    if exc.status_code >= 500:
-        cause = exc.__cause__ or exc.__context__
-        logger.error(
-            "%s %s answered %d: %s",
-            request.method, request.url.path, exc.status_code, exc.detail,
-            exc_info=(type(cause), cause, cause.__traceback__) if cause else None,
-        )
+    the exception being handled when the HTTPException was raised.
+
+    An ApiError is answered with its structured body. A third party's failure is
+    a warning naming the upstream URL and status, so Axiom can group them by
+    source; a failure of ours stays an error with its traceback. The submitted
+    URL is not logged, only the upstream one an ApiError names."""
+    cause = exc.__cause__ or exc.__context__
+    exc_info = (type(cause), cause, cause.__traceback__) if cause else None
+    is_api = isinstance(exc, ApiError)
+    detail = exc.log_detail if is_api else exc.detail
+    if is_api and exc.code.startswith("UPSTREAM_"):
+        logger.warning("%s %s answered %d %s: %s", request.method, request.url.path,
+                       exc.status_code, exc.code, detail, exc_info=exc_info)
+    elif exc.status_code >= 500:
+        logger.error("%s %s answered %d: %s", request.method, request.url.path,
+                     exc.status_code, detail, exc_info=exc_info)
+    if is_api:
+        return JSONResponse(status_code=exc.status_code, content=exc.body())
     return await http_exception_handler(request, exc)
 
 # Pydantic models for request bodies
@@ -89,7 +215,7 @@ def redirect_old_trail_mapper_paths(request: Request):
 def download_gpx(payload: DownloadGpxRequest):
     url = payload.url
     if not is_safe_url(url):
-        raise HTTPException(status_code=400, detail="URL is unsafe or resolved to a private network address (SSRF Protection).")
+        raise ApiError(400, "INVALID_URL", "URL is unsafe or resolved to a private network address (SSRF Protection).")
     
     parsed_url = urlparse(url)
     if 'livetrail.net' in parsed_url.netloc.lower() and ('/data/gmData_' in parsed_url.path or 'gmdata_' in parsed_url.path.lower()):
@@ -97,21 +223,16 @@ def download_gpx(payload: DownloadGpxRequest):
         if m:
             course_id = m.group(1)
             clean_url = re.sub(r'\.v\d+\.', '.', url, flags=re.I)
+            req = urllib.request.Request(clean_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with fetch_upstream(req, timeout=10) as response:
+                js_content = response.read().decode('utf-8', errors='replace')
             try:
-                req = urllib.request.Request(
-                    clean_url,
-                    headers={'User-Agent': 'Mozilla/5.0'}
-                )
-                with safe_urlopen(req, timeout=10) as response:
-                    js_content = response.read().decode('utf-8', errors='replace')
                 gpx_xml = convert_livetrail_js_to_gpx(js_content, course_id)
-                if not gpx_xml:
-                    raise HTTPException(status_code=400, detail="Failed to parse coordinate track array from LiveTrail JS payload.")
-                return Response(content=gpx_xml, media_type="application/xml")
             except Exception as e:
-                if isinstance(e, HTTPException):
-                    raise e
-                raise HTTPException(status_code=500, detail=f"Failed to fetch or parse LiveTrail JS data: {e}")
+                raise upstream_error(e, clean_url, parsing=True) from e
+            if not gpx_xml:
+                raise upstream_error(ValueError("no coordinate track array in the JS payload"), clean_url, parsing=True)
+            return Response(content=gpx_xml, media_type="application/xml")
 
     try:
         req = urllib.request.Request(
@@ -119,7 +240,7 @@ def download_gpx(payload: DownloadGpxRequest):
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         )
         # Timeout at 5 seconds, read in chunks to prevent zip bomb / infinite stream
-        with safe_urlopen(req, timeout=5) as response:
+        with fetch_upstream(req, timeout=5) as response:
             content_type = response.headers.get('Content-Type', '')
             # Verify file size limit (5MB)
             content_length = response.headers.get('Content-Length')
@@ -149,16 +270,17 @@ def download_gpx(payload: DownloadGpxRequest):
                 raise HTTPException(status_code=400, detail=f"Invalid XML / GPX content: {xml_err}")
                 
             return Response(content=content.decode('utf-8'), media_type="application/xml")
+    except HTTPException:
+        raise
     except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(status_code=500, detail=f"Failed to download GPX file: {str(e)}")
+        raise ApiError(500, "INTERNAL_ERROR", "Something went wrong on our side.",
+                       log_detail=f"Failed to download GPX file: {type(e).__name__}: {e}") from e
 
 @app.post("/api/parse-url")
 def parse_url(payload: ParseUrlRequest):
     url = payload.url
     if not is_safe_url(url):
-        raise HTTPException(status_code=400, detail="URL is unsafe or resolved to a private network address (SSRF Protection).")
+        raise ApiError(400, "INVALID_URL", "URL is unsafe or resolved to a private network address (SSRF Protection).")
     
     parsed_url = urlparse(url)
     if 'livetrail.net' in parsed_url.netloc.lower():
@@ -178,35 +300,35 @@ def parse_url(payload: ParseUrlRequest):
         if course_id:
             parcours_url += f"?course={course_id}"
             
+        # LiveTrail answers 404 on parcours.php when a race is not published (or
+        # no longer is): that is their answer, not our failure, and the frontend
+        # says so. A page that answers but holds no course is a format change.
+        req = urllib.request.Request(parcours_url, headers={'User-Agent': 'Mozilla/5.0'})
+        with fetch_upstream(req, timeout=10) as response:
+            xml_content = response.read().decode('utf-8', errors='replace')
         try:
-            req = urllib.request.Request(
-                parcours_url,
-                headers={'User-Agent': 'Mozilla/5.0'}
-            )
-            with safe_urlopen(req, timeout=10) as response:
-                xml_content = response.read().decode('utf-8', errors='replace')
-                
             parsed_data = parse_livetrail_xml(xml_content, course_id)
-            if parsed_data:
-                actual_course_id = parsed_data["course_id"]
-                return JSONResponse(content={
-                    "stations": parsed_data["stations"],
-                    "gpx_link": f"{base_url}/data/gmData_{actual_course_id}.js",
-                    "metadata": {
-                        "course_name": parsed_data["course_name"],
-                        "distance": f"{parsed_data['total_distance']:.1f} km",
-                        "elevation": f"{parsed_data['total_gain']} m D+",
-                        "start_location": "LiveTrail",
-                        "start_date": None,
-                        "start_date_iso": None,
-                        "category": actual_course_id,
-                        "running_stones": None,
-                        "direct_entry": None,
-                        "logo_url": f"{base_url}/im/favicon.png"
-                    }
-                })
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to fetch or parse LiveTrail course data: {e}")
+            raise upstream_error(e, parcours_url, parsing=True) from e
+        if not parsed_data:
+            raise upstream_error(ValueError("no course found in parcours.php"), parcours_url, parsing=True)
+        actual_course_id = parsed_data["course_id"]
+        return JSONResponse(content={
+            "stations": parsed_data["stations"],
+            "gpx_link": f"{base_url}/data/gmData_{actual_course_id}.js",
+            "metadata": {
+                "course_name": parsed_data["course_name"],
+                "distance": f"{parsed_data['total_distance']:.1f} km",
+                "elevation": f"{parsed_data['total_gain']} m D+",
+                "start_location": "LiveTrail",
+                "start_date": None,
+                "start_date_iso": None,
+                "category": actual_course_id,
+                "running_stones": None,
+                "direct_entry": None,
+                "logo_url": f"{base_url}/im/favicon.png"
+            }
+        })
     
     # If the user has an n8n webhook URL configured in environment, route through it
     n8n_url = os.environ.get("N8N_PARSER_WEBHOOK_URL")
@@ -234,7 +356,7 @@ def parse_url(payload: ParseUrlRequest):
             url,
             headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         )
-        with safe_urlopen(req, timeout=5) as response:
+        with fetch_upstream(req, timeout=5) as response:
             html = response.read().decode('utf-8', errors='replace')
             
         # Try to parse as Next.js __NEXT_DATA__
@@ -246,13 +368,12 @@ def parse_url(payload: ParseUrlRequest):
         # courses from its own API, so the HTML holds no aid stations at all.
         # Say so instead of letting the generic scraper return an empty course.
         if 'utmb.world' in parsed_url.netloc.lower() and is_client_rendered_next_page(html):
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "This UTMB page renders its course in the browser, so it exposes no "
-                    "aid stations to fetch. Use the race page on the event site instead "
-                    "(e.g. https://montblanc.utmb.world/races/utmb)."
-                )
+            raise ApiError(
+                422, "INVALID_URL",
+                "This UTMB page renders its course in the browser, so it exposes no "
+                "aid stations to fetch. Use the race page on the event site instead "
+                "(e.g. https://montblanc.utmb.world/races/utmb).",
+                source="utmb", source_url=_site_of(url),
             )
             
         # Try to locate any GPX URL in the page to help the user
@@ -391,7 +512,8 @@ def parse_url(payload: ParseUrlRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to parse URL: {str(e)}")
+        raise ApiError(500, "INTERNAL_ERROR", "Something went wrong on our side.",
+                       log_detail=f"Failed to parse URL: {type(e).__name__}: {e}") from e
 
 @app.post("/api/merge")
 async def merge_data(

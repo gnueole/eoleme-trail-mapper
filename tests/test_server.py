@@ -477,7 +477,9 @@ def test_server_error_logs_its_cause(monkeypatch, capsys):
 
     err = capsys.readouterr().err
     lines = err.splitlines()
-    assert lines[0].startswith("ERROR:    POST /api/parse-url answered 500: Failed to parse URL: upstream went away")
+    # An unclassified failure is ours: ERROR, with the exception text, never the URL
+    assert lines[0].startswith("ERROR:    POST /api/parse-url answered 500: ")
+    assert "upstream went away" in lines[0]
     assert any("ValueError: upstream went away" in line for line in lines[1:])
     assert all(line[:1].isspace() for line in lines[1:])
     assert "montblanc" not in err
