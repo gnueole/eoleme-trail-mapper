@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2026-10-04
+
+### Fixed
+
+- **A third party's failure is no longer a 500 of ours.** On 2026-10-04 a user
+  opened `/?url=https://volvic.livetrail.net/`; LiveTrail answered 404 on
+  `parcours.php`, and `/api/parse-url` turned that into a generic 500 and a
+  browser `alert()` that blamed nobody. `/api/parse-url` and `/api/download-gpx`
+  now answer a typed error, `{"error": {"code", "source", "source_url",
+  "upstream_status", "message"}}` (plus `detail` for older callers): the source
+  answered 404 → `404 UPSTREAM_NOT_FOUND`; answered another error → `502
+  UPSTREAM_UNAVAILABLE`; timed out → `504 UPSTREAM_TIMEOUT`; unreachable or
+  unresolvable → `502 UPSTREAM_UNAVAILABLE`; answered something unreadable →
+  `502 UPSTREAM_FORMAT_CHANGED`; the URL itself is refused → `400`/`422
+  INVALID_URL`. `500 INTERNAL_ERROR` is left for what is really ours, with a
+  fixed message. Upstream failures are logged as warnings with the upstream URL
+  and status; internal ones stay errors with their traceback. No exception text
+  or path reaches a response any more.
+- **`GET /null` after a race load.** The request had followed race loads for
+  weeks, successful ones included: the only element that could produce it is
+  the race logo, whose `src` was assigned from state, and an `<img src>` given
+  a non-URL turns into a request for `/null`. Every `src` and `href` the app
+  sets from data now goes through `urls.js`, which clears the attribute unless
+  the value is an absolute http(s) URL, and the restored state is filtered the
+  same way. The value that reached it in production was not pinned down; the
+  path is closed whatever it was.
+
+### Added
+
+- **An error modal instead of `alert()`.** Accessible (`role=dialog`,
+  `aria-modal`, focus moved in and trapped, Esc and the backdrop close it, focus
+  returned to the opener), on the app's own modal styles, readable at phone
+  width. What it says follows the error code: a source-side failure names the
+  source ("LiveTrail doesn't provide data for this race right now…"), shows the
+  address asked and offers "Open on LiveTrail" and "Try another URL"; an
+  invalid URL helps with the input; an internal error says so and offers a
+  retry. Strings in English and French. The failure class, source and statuses
+  go to telemetry as `fetch_failed`; the URL does not.
+- **Tests.** `tests/test_parse_url_errors.py` mocks the upstream for every
+  class (404, 5xx, three timeouts, refused, DNS, garbage payload, SSRF, UTMB
+  App Router page, internal error, and the same on `/api/download-gpx`), and
+  checks the body shape, the leak-free message and the log level.
+  `tests/js/urls.test.js` reproduces the `/null` mechanism before pinning the
+  guard; `tests/js/api-errors.test.js` covers the contract and the modal wording
+  in both languages.
+
+---
+
 ## [1.6.2] - 2026-09-19
 
 ### Fixed
