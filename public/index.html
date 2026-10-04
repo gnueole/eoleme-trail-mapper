@@ -537,6 +537,22 @@
         </div>
     </div>
 
+    <!-- Error Modal: what went wrong, whose fault it is, what to do next -->
+    <div class="modal-backdrop" id="error-modal" style="display: none;">
+        <div class="modal-card error-card" role="dialog" aria-modal="true" aria-labelledby="error-modal-title" aria-describedby="error-modal-body">
+            <div class="modal-header">
+                <h2 id="error-modal-title"></h2>
+                <button type="button" class="btn-close" id="btn-close-error" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="error-modal-body" class="error-body"></p>
+                <p id="error-modal-source" class="error-source" style="display: none;"><span id="error-modal-source-label"></span> <a id="error-modal-source-url" target="_blank" rel="noopener noreferrer"></a></p>
+                <p id="error-modal-hint" class="error-hint"></p>
+                <div id="error-modal-actions" class="modal-actions"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- App Logic Script -->
     <script type="module" src="js/app.js"></script>
 </body>

@@ -1777,3 +1777,60 @@ body.light-theme .poi-table .custom-dropdown-trigger {
         padding: 1rem;
     }
 }
+
+/* Error modal: the app's modal card, with a red top like the success card's green one */
+.error-card {
+    max-width: 480px;
+    border-top: 5px solid var(--error-color);
+}
+
+.error-card .modal-header h2 {
+    background: none;
+    -webkit-text-fill-color: var(--text-color);
+    color: var(--text-color);
+}
+
+.error-body {
+    margin: 0 0 1rem;
+    font-size: 0.95rem;
+}
+
+.error-source {
+    margin: 0 0 1rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    word-break: break-all;
+}
+
+.error-source a {
+    color: var(--accent-color);
+    text-decoration: underline;
+}
+
+.error-hint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+}
+
+.modal-actions .btn {
+    flex: 1 1 160px;
+    justify-content: center;
+    min-height: 42px;
+}
+
+@media (max-width: 480px) {
+    .error-card {
+        width: 94%;
+    }
+    .modal-actions .btn {
+        flex-basis: 100%;
+    }
+}

@@ -1,5 +1,8 @@
 import { state, saveStateToLocalStorage } from './state.js';
 import { TRANSLATIONS, getSymbolLabel, SYMBOL_LABELS } from './translations.js';
+import { parseApiError, describeError } from './api-errors.js';
+import { showErrorModal, closeErrorModal, initErrorModal } from './error-modal.js';
+import { safeHttpUrl, setImageSource, setLinkHref } from './urls.js';
 import { 
     initMap, 
     drawRouteOnMap, 
@@ -555,12 +558,8 @@ function updateRaceInfoCard() {
     const logoContainer = document.getElementById('info-logo-container');
     const logoImg = document.getElementById('info-race-logo');
     
-    if (state.raceLogoUrl) {
-        logoImg.src = state.raceLogoUrl;
-        logoContainer.style.display = 'flex';
-    } else {
-        logoContainer.style.display = 'none';
-    }
+    // A null here used to become the string "null" and a GET /null (1.7.0)
+    logoContainer.style.display = setImageSource(logoImg, state.raceLogoUrl) ? 'flex' : 'none';
     
     const badgesContainer = document.getElementById('info-badges-container');
     if (badgesContainer) {
@@ -623,12 +622,7 @@ function updateRaceInfoCard() {
     }
     
     const linkBtn = document.getElementById('btn-race-link');
-    if (state.raceOfficialUrl) {
-        linkBtn.href = state.raceOfficialUrl;
-        linkBtn.style.display = 'flex';
-    } else {
-        linkBtn.style.display = 'none';
-    }
+    linkBtn.style.display = setLinkHref(linkBtn, state.raceOfficialUrl) ? 'flex' : 'none';
     
     const lang = state.locale || 'fr';
     document.getElementById('lbl-race-link').textContent = lang === 'fr' ? 'Voir sur le site officiel' : 'View official site';
@@ -653,8 +647,8 @@ function loadStateFromLocalStorage() {
         state.locale = data.locale || 'fr';
         state.raceCategory = data.raceCategory || null;
         state.raceRunningStones = data.raceRunningStones || null;
-        state.raceLogoUrl = data.raceLogoUrl || null;
-        state.raceOfficialUrl = data.raceUrl || null;
+        state.raceLogoUrl = safeHttpUrl(data.raceLogoUrl);
+        state.raceOfficialUrl = safeHttpUrl(data.raceUrl);
         if (state.raceOfficialUrl && raceUrlInput) {
             raceUrlInput.value = state.raceOfficialUrl;
         }
@@ -1194,8 +1188,7 @@ btnFetch.addEventListener('click', async () => {
         });
         
         if (!response.ok) {
-            const errData = await response.json();
-            throw new Error(errData.detail || 'Failed to parse URL on server');
+            throw await apiFailure(response);
         }
         
         const data = await response.json();
@@ -1205,8 +1198,8 @@ btnFetch.addEventListener('click', async () => {
         
         state.raceCategory = metadata.category || null;
         state.raceRunningStones = metadata.running_stones || null;
-        state.raceLogoUrl = metadata.logo_url || null;
-        state.raceOfficialUrl = url;
+        state.raceLogoUrl = safeHttpUrl(metadata.logo_url);
+        state.raceOfficialUrl = safeHttpUrl(url);
         state.raceStartDate = metadata.start_date || null;
         state.raceStartDateIso = metadata.start_date_iso || null;
         state.raceDirectEntry = metadata.direct_entry || null;
@@ -1254,7 +1247,7 @@ btnFetch.addEventListener('click', async () => {
             });
             
             if (!downloadResponse.ok) {
-                throw new Error('Failed to download GPX file from target URL');
+                throw await apiFailure(downloadResponse);
             }
             
             const gpxBlob = await downloadResponse.blob();
@@ -1288,16 +1281,63 @@ btnFetch.addEventListener('click', async () => {
         
     } catch (err) {
         console.error(err);
-        const lang = state.locale || 'fr';
-        const failMsg = lang === 'fr'
-            ? `Impossible de récupérer les données de la course : ${err.message}\n\nRetour à l'onglet "Téléverser Fichiers" pour charger manuellement.`
-            : `Failed to retrieve race data: ${err.message}\n\nFallback to "Upload Files" tab to load GPX and paste HTML manually.`;
-        alert(failMsg);
-        switchTab('upload-tab');
+        showFetchError(err.apiError || parseApiError(0, null), url);
     } finally {
         fetchLoader.classList.remove('active');
     }
 });
+
+/** An Error carrying the server's structured error, built from a failed Response. */
+async function apiFailure(response) {
+    let body = null;
+    try { body = await response.json(); } catch (e) { /* not JSON: an HTML error page */ }
+    const apiError = parseApiError(response.status, body);
+    const err = new Error(apiError.message || `HTTP ${response.status}`);
+    err.apiError = apiError;
+    return err;
+}
+
+/**
+ * The error modal for a failed race fetch. The text names the third party when
+ * the failure is theirs, helps with the input when it is the user's, and owns
+ * up when it is ours. The telemetry carries the class of failure, never the URL.
+ */
+function showFetchError(apiError, inputUrl) {
+    const t = TRANSLATIONS[state.locale] || TRANSLATIONS.fr;
+    const view = describeError(apiError, t, safeHttpUrl(inputUrl));
+    const buttons = [];
+    view.actions.forEach(action => {
+        if (action === 'open_source' && view.sourceUrl) {
+            buttons.push({ label: view.openLabel, href: view.sourceUrl });
+        } else if (action === 'try_another') {
+            buttons.push({ label: t.err_try_another, primary: true, onClick: () => {
+                closeErrorModal();
+                if (raceUrlInput) { raceUrlInput.focus(); raceUrlInput.select(); }
+            } });
+        } else if (action === 'retry') {
+            buttons.push({ label: t.err_retry, primary: true, onClick: () => {
+                closeErrorModal();
+                btnFetch.click();
+            } });
+        } else if (action === 'close') {
+            buttons.push({ label: t.err_close, onClick: closeErrorModal });
+        }
+    });
+    showErrorModal({
+        title: view.title,
+        body: view.body,
+        hint: view.hint,
+        sourceUrl: view.sourceUrl,
+        buttons,
+        labels: { source: t.err_source_label, close: t.err_close }
+    });
+    trackEvent('fetch_failed', {
+        code: view.code,
+        source: apiError.source || null,
+        status: apiError.status || 0,
+        upstream_status: apiError.upstreamStatus || null
+    });
+}
 
 // Drag and drop setup
 if (dragDropZone) {
@@ -1639,6 +1679,8 @@ guideTabBtns.forEach(btn => {
         switchGuideTab(brand);
     });
 });
+
+initErrorModal();
 
 // Success Modal closing
 const btnCloseSuccess = document.getElementById('btn-close-success');
